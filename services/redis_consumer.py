@@ -1,0 +1,327 @@
+"""Redis consumer service for DataPlane Agent.
+
+This service handles consuming messages from Redis queues and processing them.
+"""
+
+import asyncio
+import json
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from config import ApplicationConfig
+from models import (
+    EnrichedUsageRecord,
+    QuotaRefreshRequest,
+    SessionLifecycleEvent,
+    UsageRecord,
+)
+from utils import create_contextual_logger
+from .control_plane_client import ControlPlaneClient
+from .redis_client import RedisClient
+
+
+class RedisConsumerService:
+    """Service for consuming and processing Redis queue messages."""
+
+    def __init__(
+        self,
+        config: ApplicationConfig,
+        redis_client: RedisClient,
+        control_plane_client: ControlPlaneClient,
+    ) -> None:
+        """Initialize Redis consumer service."""
+        self.config = config
+        self.redis_client = redis_client
+        self.control_plane_client = control_plane_client
+        self.logger = create_contextual_logger(__name__, service="redis_consumer")
+        
+        self._running = False
+        self._tasks: List[asyncio.Task[None]] = []
+
+    async def start(self) -> None:
+        """Start consuming from Redis queues."""
+        if self._running:
+            return
+
+        self._running = True
+        
+        # Start consumer tasks
+        self._tasks = [
+            asyncio.create_task(self._consume_usage_records()),
+            asyncio.create_task(self._consume_session_lifecycle()),
+            asyncio.create_task(self._consume_quota_refresh()),
+        ]
+        
+        self.logger.info("Redis consumer service started")
+
+    async def stop(self) -> None:
+        """Stop consuming from Redis queues."""
+        if not self._running:
+            return
+
+        self._running = False
+        
+        # Cancel all tasks
+        for task in self._tasks:
+            task.cancel()
+        
+        # Wait for tasks to complete
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        
+        self.logger.info("Redis consumer service stopped")
+
+    async def _consume_usage_records(self) -> None:
+        """Consume usage records from Redis queue."""
+        queue = self.config.usage_records_queue
+        processing_queue = f"{queue}:processing"
+        
+        self.logger.info(
+            "Started consuming usage records",
+            queue=queue,
+            processing_queue=processing_queue,
+        )
+        
+        while self._running:
+            try:
+                # Use reliable pop with processing queue
+                result = await self.redis_client.reliable_pop_message(
+                    queue, processing_queue, timeout=5
+                )
+                
+                if result:
+                    message_id, message_data = result
+                    correlation_id = str(uuid.uuid4())
+                    
+                    try:
+                        await self._process_usage_record(
+                            message_data, correlation_id
+                        )
+                        
+                        # Acknowledge successful processing
+                        await self.redis_client.acknowledge_message(
+                            processing_queue, json.dumps(message_data)
+                        )
+                        
+                    except Exception as e:
+                        self.logger.error(
+                            "Failed to process usage record",
+                            error=str(e),
+                            message_id=message_id,
+                            correlation_id=correlation_id,
+                        )
+                        
+                        # Move to dead letter queue
+                        await self.redis_client.move_to_dead_letter_queue(
+                            processing_queue,
+                            json.dumps(message_data),
+                            error_info=str(e),
+                        )
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(
+                    "Error in usage records consumer",
+                    error=str(e),
+                    queue=queue,
+                )
+                await asyncio.sleep(1)
+
+    async def _consume_session_lifecycle(self) -> None:
+        """Consume session lifecycle events from Redis queue."""
+        queue = self.config.session_lifecycle_queue
+        processing_queue = f"{queue}:processing"
+        
+        self.logger.info(
+            "Started consuming session lifecycle events",
+            queue=queue,
+            processing_queue=processing_queue,
+        )
+        
+        while self._running:
+            try:
+                result = await self.redis_client.reliable_pop_message(
+                    queue, processing_queue, timeout=5
+                )
+                
+                if result:
+                    message_id, message_data = result
+                    correlation_id = str(uuid.uuid4())
+                    
+                    try:
+                        await self._process_session_lifecycle_event(
+                            message_data, correlation_id
+                        )
+                        
+                        # Acknowledge successful processing
+                        await self.redis_client.acknowledge_message(
+                            processing_queue, json.dumps(message_data)
+                        )
+                        
+                    except Exception as e:
+                        self.logger.error(
+                            "Failed to process session lifecycle event",
+                            error=str(e),
+                            message_id=message_id,
+                            correlation_id=correlation_id,
+                        )
+                        
+                        # Move to dead letter queue
+                        await self.redis_client.move_to_dead_letter_queue(
+                            processing_queue,
+                            json.dumps(message_data),
+                            error_info=str(e),
+                        )
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(
+                    "Error in session lifecycle consumer",
+                    error=str(e),
+                    queue=queue,
+                )
+                await asyncio.sleep(1)
+
+    async def _consume_quota_refresh(self) -> None:
+        """Consume quota refresh requests from Redis queue."""
+        queue = self.config.quota_refresh_queue
+        processing_queue = f"{queue}:processing"
+        
+        self.logger.info(
+            "Started consuming quota refresh requests",
+            queue=queue,
+            processing_queue=processing_queue,
+        )
+        
+        while self._running:
+            try:
+                result = await self.redis_client.reliable_pop_message(
+                    queue, processing_queue, timeout=5
+                )
+                
+                if result:
+                    message_id, message_data = result
+                    correlation_id = str(uuid.uuid4())
+                    
+                    try:
+                        await self._process_quota_refresh_request(
+                            message_data, correlation_id
+                        )
+                        
+                        # Acknowledge successful processing
+                        await self.redis_client.acknowledge_message(
+                            processing_queue, json.dumps(message_data)
+                        )
+                        
+                    except Exception as e:
+                        self.logger.error(
+                            "Failed to process quota refresh request",
+                            error=str(e),
+                            message_id=message_id,
+                            correlation_id=correlation_id,
+                        )
+                        
+                        # Move to dead letter queue
+                        await self.redis_client.move_to_dead_letter_queue(
+                            processing_queue,
+                            json.dumps(message_data),
+                            error_info=str(e),
+                        )
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(
+                    "Error in quota refresh consumer",
+                    error=str(e),
+                    queue=queue,
+                )
+                await asyncio.sleep(1)
+
+    async def _process_usage_record(
+        self, 
+        message_data: Dict[str, Any], 
+        correlation_id: str
+    ) -> None:
+        """Process a single usage record."""
+        # Parse and validate usage record
+        usage_record = UsageRecord(**message_data)
+        
+        # Enrich with server metadata
+        enriched_record = EnrichedUsageRecord(
+            **usage_record.dict(),
+            server_instance_id=self.config.server_id,
+            api_server_region=self.config.server_region,
+            processing_timestamp=datetime.utcnow(),
+            agent_version=self.config.app_version,
+        )
+        
+        # Submit to ControlPlane
+        await self.control_plane_client.submit_usage_records(
+            [enriched_record], correlation_id
+        )
+        
+        self.logger.info(
+            "Usage record processed successfully",
+            session_id=usage_record.api_session_id,
+            customer_id=usage_record.customer_id,
+            correlation_id=correlation_id,
+        )
+
+    async def _process_session_lifecycle_event(
+        self, 
+        message_data: Dict[str, Any], 
+        correlation_id: str
+    ) -> None:
+        """Process a session lifecycle event."""
+        event = SessionLifecycleEvent(**message_data)
+        
+        if event.event_type.value == "start":
+            await self.control_plane_client.notify_session_start(
+                event, correlation_id
+            )
+        elif event.event_type.value == "complete":
+            await self.control_plane_client.notify_session_complete(
+                event, correlation_id
+            )
+        
+        self.logger.info(
+            "Session lifecycle event processed",
+            session_id=event.api_session_id,
+            event_type=event.event_type.value,
+            correlation_id=correlation_id,
+        )
+
+    async def _process_quota_refresh_request(
+        self, 
+        message_data: Dict[str, Any], 
+        correlation_id: str
+    ) -> None:
+        """Process a quota refresh request."""
+        quota_request = QuotaRefreshRequest(**message_data)
+        
+        # Submit quota refresh request to ControlPlane
+        await self.control_plane_client.request_quota_refresh(
+            quota_request, correlation_id
+        )
+        
+        self.logger.info(
+            "Quota refresh request processed",
+            session_id=quota_request.api_session_id,
+            customer_id=quota_request.customer_id,
+            requested_quota=quota_request.requested_quota,
+            correlation_id=correlation_id,
+        )
+
+    async def get_consumer_stats(self) -> Dict[str, Any]:
+        """Get consumer statistics."""
+        queue_lengths = await self.redis_client.get_all_queue_lengths()
+        
+        return {
+            "running": self._running,
+            "active_tasks": len([t for t in self._tasks if not t.done()]),
+            "queue_lengths": queue_lengths,
+            "total_tasks": len(self._tasks),
+        }
