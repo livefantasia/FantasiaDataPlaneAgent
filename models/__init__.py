@@ -87,6 +87,9 @@ class SessionLifecycleEvent(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Event timestamp"
     )
+    disconnect_reason: Optional[str] = Field(
+        default=None, description="Reason for session completion"
+    )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Additional event metadata"
     )

@@ -132,7 +132,7 @@ class HealthMetricsService:
                 server_id=self.config.server_id,
                 region=self.config.server_region,
                 version=self.config.app_version,
-                ip_address="0.0.0.0",  # Would be determined at runtime
+                ip_address=self.config.server_ip,
                 port=self.config.server_port,
                 capabilities=[
                     "usage_tracking",

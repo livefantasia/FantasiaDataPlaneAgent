@@ -27,6 +27,7 @@ class ApplicationConfig(BaseSettings):
     server_region: str = Field(alias="SERVER_REGION")
     server_port: int = Field(default=8081, alias="SERVER_PORT")
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
+    server_ip: str = Field(default="0.0.0.0", alias="SERVER_IP")
 
     # Redis configuration
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")

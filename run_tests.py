@@ -119,16 +119,16 @@ def run_all_checks():
     
     all_passed = True
     for name, passed in results.items():
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"{name}: {status}")
         if not passed:
             all_passed = False
     
     if all_passed:
-        print("\n🎉 All checks passed!")
+        print("\nAll checks passed!")
         return 0
     else:
-        print("\n⚠️  Some checks failed. Please fix the issues above.")
+        print("\nSome checks failed. Please fix the issues above.")
         return 1
 
 

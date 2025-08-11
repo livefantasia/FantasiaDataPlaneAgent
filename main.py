@@ -63,16 +63,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await health_metrics.start()
         await redis_consumer.start()
         await command_processor.start()
-        
-        # Inject dependencies into routers
-        from .routers.health import set_health_service as set_health_health_service
-        from .routers.metrics import set_health_service as set_metrics_health_service
-        
-        set_health_health_service(health_metrics)
-        set_metrics_health_service(health_metrics)
-        
+
+        # Store services in app.state for dependency injection
+        app.state.health_metrics = health_metrics
+
         logger.info("All services started successfully")
-        
+
         yield
         
     except Exception as e:
