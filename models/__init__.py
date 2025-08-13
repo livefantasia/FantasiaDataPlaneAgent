@@ -35,6 +35,7 @@ class CommandType(str, Enum):
 class UsageRecord(BaseModel):
     """Usage record from AudioAPIServer."""
 
+    transaction_id: str = Field(..., description="Unique transaction identifier for idempotency")
     api_session_id: str = Field(..., description="Unique session identifier")
     customer_id: str = Field(..., description="Customer identifier")
     product_code: ProductCode = Field(
@@ -102,10 +103,10 @@ class SessionLifecycleEvent(BaseModel):
 class QuotaRefreshRequest(BaseModel):
     """Request for quota refresh."""
 
+    transaction_id: str = Field(..., description="Unique transaction identifier for idempotency")
     api_session_id: str = Field(..., description="Session identifier")
     customer_id: str = Field(..., description="Customer identifier")
-    current_usage: float = Field(..., ge=0, description="Current usage amount")
-    requested_quota: float = Field(..., gt=0, description="Additional quota requested")
+    current_usage_seconds: float = Field(..., ge=0, description="Current usage in seconds for the session")
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Request timestamp"
     )
