@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-def run_unit_tests():
+def run_unit_tests() -> bool:
     """Run unit tests."""
     print("Running unit tests...")
     result = subprocess.run([
@@ -22,7 +22,7 @@ def run_unit_tests():
     return result.returncode == 0
 
 
-def run_integration_tests():
+def run_integration_tests() -> bool:
     """Run integration tests."""
     print("Running integration tests...")
     result = subprocess.run([
@@ -34,7 +34,7 @@ def run_integration_tests():
     return result.returncode == 0
 
 
-def run_all_tests():
+def run_all_tests() -> bool:
     """Run all tests."""
     print("Running all tests...")
     result = subprocess.run([
@@ -49,7 +49,7 @@ def run_all_tests():
     return result.returncode == 0
 
 
-def run_type_check():
+def run_type_check() -> bool:
     """Run mypy type checking."""
     print("Running type checking...")
     result = subprocess.run([
@@ -60,7 +60,7 @@ def run_type_check():
     return result.returncode == 0
 
 
-def run_linting():
+def run_linting() -> bool:
     """Run code linting."""
     print("Running linting...")
     
@@ -83,7 +83,7 @@ def run_linting():
     return flake8_result.returncode == 0 and black_result.returncode == 0
 
 
-def run_security_check():
+def run_security_check() -> bool:
     """Run security checking."""
     print("Running security check...")
     result = subprocess.run([
@@ -94,7 +94,7 @@ def run_security_check():
     return result.returncode == 0
 
 
-def run_all_checks():
+def run_all_checks() -> int:
     """Run all quality checks."""
     print("=" * 60)
     print("Running complete test and quality check suite")

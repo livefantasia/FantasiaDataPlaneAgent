@@ -30,7 +30,7 @@ class TestControlPlaneClient:
     @pytest.mark.asyncio
     async def test_start(self, control_plane_client, mock_config) -> None:
         """Test starting the ControlPlane client."""
-        with patch("dataplane_agent.services.control_plane_client.AsyncClient") as mock_client_class:
+        with patch("services.control_plane_client.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             
@@ -52,8 +52,10 @@ class TestControlPlaneClient:
     @pytest.mark.asyncio
     async def test_make_request_success(self, control_plane_client) -> None:
         """Test successful HTTP request."""
+        from unittest.mock import Mock
+        
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"status": "success"}
         mock_response.raise_for_status.return_value = None
@@ -189,7 +191,11 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/sessions/test-session/refresh",
-                data=quota_request.model_dump(),
+                data={
+                    "apiSessionId": "test-session",
+                    "transactionId": "test-transaction-002",
+                    "timestamp": quota_request.timestamp.isoformat()
+                },
                 correlation_id=None
             )
 

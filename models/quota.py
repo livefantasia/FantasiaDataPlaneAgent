@@ -11,7 +11,7 @@ class QuotaRefreshRequest(BaseModel):
     transaction_id: str = Field(..., description="Unique transaction identifier for idempotency")
     api_session_id: str = Field(..., description="Session identifier")
     customer_id: str = Field(..., description="Customer identifier")
-    current_usage: float = Field(..., ge=0, description="Current usage for the session")
+    current_usage: float = Field(..., ge=0, description="Current usage amount")
     requested_quota: float = Field(..., gt=0, description="Requested quota amount")
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Request timestamp"

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .enums import CommandType
 
@@ -18,9 +18,7 @@ class RemoteCommand(BaseModel):
     )
     timestamp: datetime = Field(..., description="Command timestamp")
 
-    class Config:
-        """Pydantic model configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class CommandResult(BaseModel):

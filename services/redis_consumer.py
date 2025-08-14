@@ -312,7 +312,6 @@ class RedisConsumerService:
             "Quota refresh request processed",
             session_id=quota_request.api_session_id,
             customer_id=quota_request.customer_id,
-            requested_quota=quota_request.requested_quota,
             correlation_id=correlation_id,
         )
         

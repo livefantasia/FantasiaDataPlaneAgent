@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 from .enums import ProductCode
 
@@ -30,18 +30,17 @@ class UsageRecord(BaseModel):
     request_timestamp: datetime = Field(..., description="When request was initiated")
     response_timestamp: datetime = Field(..., description="When response was sent")
 
-    @validator("response_timestamp")
+    @field_validator("response_timestamp")
+    @classmethod
     def response_after_request(
-        cls, v: datetime, values: Dict[str, Any]
+        cls, v: datetime, info
     ) -> datetime:
         """Ensure response timestamp is after request timestamp."""
-        if "request_timestamp" in values and v < values["request_timestamp"]:
+        if "request_timestamp" in info.data and v < info.data["request_timestamp"]:
             raise ValueError("response_timestamp must be after request_timestamp")
         return v
 
-    class Config:
-        """Pydantic model configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class EnrichedUsageRecord(UsageRecord):

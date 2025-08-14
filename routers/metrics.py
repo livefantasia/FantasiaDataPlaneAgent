@@ -11,7 +11,7 @@ router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 def get_health_service(request: Request) -> HealthMetricsService:
     """Dependency to get health service from application state."""
-    return request.app.state.health_metrics
+    return request.app.state.health_metrics  # type: ignore[no-any-return]
 
 
 @router.get("/", response_class=Response)

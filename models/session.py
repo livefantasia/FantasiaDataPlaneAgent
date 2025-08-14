@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .enums import SessionEventType
 
@@ -27,6 +27,4 @@ class SessionLifecycleEvent(BaseModel):
         default=None, description="Additional event metadata"
     )
 
-    class Config:
-        """Pydantic model configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

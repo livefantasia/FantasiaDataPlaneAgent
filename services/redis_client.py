@@ -5,7 +5,7 @@ This module provides Redis connectivity and queue operations.
 
 import asyncio
 import json
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Dict, List, Optional, Tuple, Union, cast
 
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, RedisError
@@ -101,7 +101,7 @@ class RedisClient:
             serialized = json.dumps(data, default=str)
             
             if self._client:
-                await self._client.lpush(queue, serialized)
+                await cast(Awaitable[int], self._client.lpush(queue, serialized))
                 
                 self.logger.debug(
                     "Message pushed to queue",
@@ -130,13 +130,13 @@ class RedisClient:
             if self._client:
                 if timeout > 0:
                     # Blocking pop with timeout
-                    result = await self._client.brpop(queue, timeout=timeout)
+                    result = await cast(Awaitable[list], self._client.brpop([queue], timeout=timeout))
                     if result:
                         _, serialized = result
                         return json.loads(serialized)
                 else:
                     # Non-blocking pop
-                    serialized = await self._client.rpop(queue)
+                    serialized = await cast(Awaitable[Optional[str]], self._client.rpop(queue))
                     if serialized:
                         return json.loads(serialized)
             return None
@@ -159,11 +159,12 @@ class RedisClient:
         
         try:
             if self._client:
-                result = await self._client.brpoplpush(
+                result = await cast(Awaitable[str], self._client.brpoplpush(
                     source_queue, 
                     processing_queue, 
                     timeout=timeout
-                )
+                ))
+
                 if result:
                     message_id = await self._client.get(f"msg_id:{result}")
                     if not message_id:
@@ -192,7 +193,8 @@ class RedisClient:
         
         try:
             if self._client:
-                await self._client.lrem(processing_queue, 1, message_data)
+                await cast(Awaitable[int], self._client.lrem(processing_queue, 1, message_data))
+
                 self.logger.debug(
                     "Message acknowledged",
                     processing_queue=processing_queue,
@@ -225,11 +227,11 @@ class RedisClient:
                 }
                 
                 # Push to DLQ and remove from processing queue
-                await self._client.lpush(
+                await cast(Awaitable[int], self._client.lpush(
                     self.config.dead_letter_queue,
                     json.dumps(dlq_entry, default=str)
-                )
-                await self._client.lrem(processing_queue, 1, message_data)
+                ))
+                await cast(Awaitable[int], self._client.lrem(processing_queue, 1, message_data))
                 
                 self.logger.warning(
                     "Message moved to dead letter queue",
@@ -250,7 +252,7 @@ class RedisClient:
         
         try:
             if self._client:
-                return await self._client.llen(queue)
+                return await cast(Awaitable[int], self._client.llen(queue))
             return 0
         except Exception as e:
             self.logger.error(

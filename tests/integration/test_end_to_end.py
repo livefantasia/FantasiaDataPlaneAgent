@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,8 +29,8 @@ class TestEndToEndIntegration:
 
     @pytest.mark.asyncio
     async def test_complete_usage_record_flow(
-        self, mock_config, mock_redis_client, mock_control_plane_client
-    ):
+        self, mock_config: Any, mock_redis_client: Any, mock_control_plane_client: Any
+    ) -> None:
         """Test complete flow from Redis queue to ControlPlane for usage records."""
         # Prepare test data
         usage_record_data = {
@@ -72,8 +73,8 @@ class TestEndToEndIntegration:
 
     @pytest.mark.asyncio
     async def test_session_lifecycle_complete_flow(
-        self, mock_config, mock_redis_client, mock_control_plane_client
-    ):
+        self, mock_config: Any, mock_redis_client: Any, mock_control_plane_client: Any
+    ) -> None:
         """Test complete session lifecycle event processing."""
         # Test session start event
         start_event_data = {
@@ -107,8 +108,8 @@ class TestEndToEndIntegration:
 
     @pytest.mark.asyncio
     async def test_remote_command_execution_flow(
-        self, mock_config, mock_redis_client, mock_control_plane_client
-    ):
+        self, mock_config: Any, mock_redis_client: Any, mock_control_plane_client: Any
+    ) -> None:
         """Test remote command polling and execution."""
         # Prepare remote command
         health_command = RemoteCommand(
@@ -147,8 +148,8 @@ class TestEndToEndIntegration:
 
     @pytest.mark.asyncio
     async def test_graceful_shutdown(
-        self, mock_config, mock_redis_client, mock_control_plane_client
-    ):
+        self, mock_config: Any, mock_redis_client: Any, mock_control_plane_client: Any
+    ) -> None:
         """Test graceful system shutdown."""
         consumer = RedisConsumerService(
             config=mock_config,

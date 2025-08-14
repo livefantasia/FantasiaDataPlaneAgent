@@ -187,10 +187,16 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Request additional quota for active session."""
+        # Transform QuotaRefreshRequest to SessionRefreshRequest format for ControlPlane
+        session_refresh_data = {
+            "apiSessionId": quota_request.api_session_id,
+            "transactionId": quota_request.transaction_id,
+            "timestamp": quota_request.timestamp.isoformat() if hasattr(quota_request.timestamp, 'isoformat') else str(quota_request.timestamp)
+        }        
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{quota_request.api_session_id}/refresh",
-            data=quota_request.model_dump(),
+            data=session_refresh_data,
             correlation_id=correlation_id,
         )
         
@@ -198,7 +204,6 @@ class ControlPlaneClient:
             "Quota refresh requested",
             session_id=quota_request.api_session_id,
             customer_id=quota_request.customer_id,
-            requested_quota=quota_request.requested_quota,
             correlation_id=correlation_id,
         )
         
@@ -212,7 +217,7 @@ class ControlPlaneClient:
         """Notify ControlPlane of session completion."""
         result = await self._make_request(
             method="POST",
-            endpoint=f"/api/v1/sessions/{session_event.api_session_id}/complete",
+            endpoint=f"/api/v1/sessions/{session_event.api_session_id}/completed",
             data=session_event.model_dump(),
             correlation_id=correlation_id,
         )

@@ -1,8 +1,10 @@
 """Integration tests for DataPlane Agent API endpoints."""
 
+from typing import Any, AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 
 from main import create_app
@@ -12,7 +14,7 @@ class TestAPIIntegration:
     """Integration tests for API endpoints."""
 
     @pytest.fixture
-    async def app_with_mocked_services(self, mock_config):
+    async def app_with_mocked_services(self, mock_config: Any) -> AsyncGenerator[FastAPI, None]:
         """Create FastAPI app with mocked services."""
         app = create_app()
         
@@ -54,12 +56,12 @@ class TestAPIIntegration:
         )
         
         # Inject the mock service
-        with patch("dataplane_agent.routers.health._health_service", mock_health_service), \
-             patch("dataplane_agent.routers.metrics._health_service", mock_health_service):
+        with patch("routers.health._health_service", mock_health_service), \
+             patch("routers.metrics._health_service", mock_health_service):
             yield app
 
     @pytest.mark.asyncio
-    async def test_health_endpoint(self, app_with_mocked_services):
+    async def test_health_endpoint(self, app_with_mocked_services: FastAPI) -> None:
         """Test the health check endpoint."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             response = await client.get("/health/")
@@ -74,7 +76,7 @@ class TestAPIIntegration:
             assert data["control_plane_connected"] is True
 
     @pytest.mark.asyncio
-    async def test_detailed_health_endpoint(self, app_with_mocked_services):
+    async def test_detailed_health_endpoint(self, app_with_mocked_services: FastAPI) -> None:
         """Test the detailed health check endpoint."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             response = await client.get("/health/detailed")
@@ -89,7 +91,7 @@ class TestAPIIntegration:
             assert "connection_status" in data["metrics"]
 
     @pytest.mark.asyncio
-    async def test_prometheus_metrics_endpoint(self, app_with_mocked_services):
+    async def test_prometheus_metrics_endpoint(self, app_with_mocked_services: FastAPI) -> None:
         """Test the Prometheus metrics endpoint."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             response = await client.get("/metrics/")
@@ -102,7 +104,7 @@ class TestAPIIntegration:
             assert "server_id=\"test-server-001\"" in content
 
     @pytest.mark.asyncio
-    async def test_json_metrics_endpoint(self, app_with_mocked_services):
+    async def test_json_metrics_endpoint(self, app_with_mocked_services: FastAPI) -> None:
         """Test the JSON metrics endpoint."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             response = await client.get("/metrics/json")
@@ -117,11 +119,11 @@ class TestAPIIntegration:
             assert data["connection_status"]["control_plane"] is True
 
     @pytest.mark.asyncio
-    async def test_unhealthy_status_response(self, app_with_mocked_services):
+    async def test_unhealthy_status_response(self, app_with_mocked_services: FastAPI) -> None:
         """Test API response when services are unhealthy."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             # Patch the health service to return unhealthy status
-            with patch("dataplane_agent.routers.health._health_service") as mock_service:
+            with patch("routers.health._health_service") as mock_service:
                 mock_service.get_health_status.return_value = {
                     "status": "unhealthy",
                     "timestamp": "2024-01-15T10:00:00Z",
@@ -146,7 +148,7 @@ class TestAPIIntegration:
                 assert "components" in data
 
     @pytest.mark.asyncio
-    async def test_cors_headers(self, app_with_mocked_services):
+    async def test_cors_headers(self, app_with_mocked_services: FastAPI) -> None:
         """Test CORS headers are properly set."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             # Test preflight request
@@ -163,11 +165,11 @@ class TestAPIIntegration:
             assert "access-control-allow-methods" in response.headers
 
     @pytest.mark.asyncio
-    async def test_service_dependency_failure(self, app_with_mocked_services):
+    async def test_service_dependency_failure(self, app_with_mocked_services: FastAPI) -> None:
         """Test API behavior when service dependencies fail."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             # Patch the health service to raise an exception
-            with patch("dataplane_agent.routers.health._health_service") as mock_service:
+            with patch("routers.health._health_service") as mock_service:
                 mock_service.get_health_status.side_effect = Exception("Service unavailable")
                 
                 response = await client.get("/health/")
@@ -177,7 +179,7 @@ class TestAPIIntegration:
                 assert response.status_code == 500
 
     @pytest.mark.asyncio
-    async def test_api_documentation_available(self, app_with_mocked_services):
+    async def test_api_documentation_available(self, app_with_mocked_services: FastAPI) -> None:
         """Test that API documentation is available."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             # Test OpenAPI schema
@@ -195,7 +197,7 @@ class TestAPIIntegration:
             assert "text/html" in response.headers["content-type"]
 
     @pytest.mark.asyncio
-    async def test_metrics_content_type_consistency(self, app_with_mocked_services):
+    async def test_metrics_content_type_consistency(self, app_with_mocked_services: FastAPI) -> None:
         """Test that metrics endpoints return consistent content types."""
         async with AsyncClient(app=app_with_mocked_services, base_url="http://test") as client:
             # Prometheus metrics should be text/plain
@@ -207,7 +209,7 @@ class TestAPIIntegration:
             assert "application/json" in response.headers["content-type"]
 
     @pytest.mark.asyncio
-    async def test_endpoint_performance(self, app_with_mocked_services):
+    async def test_endpoint_performance(self, app_with_mocked_services: FastAPI) -> None:
         """Test that endpoints respond within reasonable time limits."""
         import time
         

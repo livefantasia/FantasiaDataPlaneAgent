@@ -20,7 +20,7 @@ class TestRedisClient:
     @pytest.mark.asyncio
     async def test_connect_success(self, redis_client, mock_config) -> None:
         """Test successful Redis connection."""
-        with patch("dataplane_agent.services.redis_client.redis") as mock_redis:
+        with patch("services.redis_client.redis") as mock_redis:
             mock_pool = AsyncMock()
             mock_client = AsyncMock()
             mock_client.ping = AsyncMock()
@@ -45,7 +45,7 @@ class TestRedisClient:
     @pytest.mark.asyncio
     async def test_connect_failure(self, redis_client) -> None:
         """Test Redis connection failure."""
-        with patch("dataplane_agent.services.redis_client.redis") as mock_redis:
+        with patch("services.redis_client.redis") as mock_redis:
             mock_client = AsyncMock()
             mock_client.ping = AsyncMock(side_effect=Exception("Connection failed"))
             mock_redis.Redis.return_value = mock_client
@@ -152,7 +152,7 @@ class TestRedisClient:
             result = await redis_client.pop_message("test_queue", timeout=10)
             
             assert result == test_data
-            mock_client.brpop.assert_called_once_with("test_queue", timeout=10)
+            mock_client.brpop.assert_called_once_with(["test_queue"], timeout=10)
 
     @pytest.mark.asyncio
     async def test_pop_message_non_blocking(self, redis_client) -> None:
