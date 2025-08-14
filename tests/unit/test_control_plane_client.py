@@ -118,6 +118,7 @@ class TestControlPlaneClient:
     async def test_submit_usage_records(self, control_plane_client) -> None:
         """Test submitting usage records."""
         usage_record = EnrichedUsageRecord(
+            transaction_id="test-transaction-001",
             api_session_id="test-session",
             customer_id="test-customer",
             connection_duration_seconds=120.0,
@@ -140,7 +141,7 @@ class TestControlPlaneClient:
                 method="POST",
                 endpoint="/api/v1/usage-records",
                 data={
-                    "usage_records": [usage_record.dict()],
+                    "usage_records": [usage_record.model_dump()],
                     "submission_timestamp": mock_request.call_args[1]["data"]["submission_timestamp"]
                 },
                 correlation_id=None
@@ -164,7 +165,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/sessions/test-session/start",
-                data=session_event.dict(),
+                data=session_event.model_dump(),
                 correlation_id=None
             )
 
@@ -172,6 +173,7 @@ class TestControlPlaneClient:
     async def test_request_quota_refresh(self, control_plane_client) -> None:
         """Test requesting quota refresh."""
         quota_request = QuotaRefreshRequest(
+            transaction_id="test-transaction-002",
             api_session_id="test-session",
             customer_id="test-customer",
             current_usage=50.0,
@@ -187,7 +189,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/sessions/test-session/refresh",
-                data=quota_request.dict(),
+                data=quota_request.model_dump(),
                 correlation_id=None
             )
 
@@ -209,7 +211,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/sessions/test-session/complete",
-                data=session_event.dict(),
+                data=session_event.model_dump(),
                 correlation_id=None
             )
 
@@ -234,7 +236,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/servers/register",
-                data=registration_data.dict(),
+                data=registration_data.model_dump(),
                 correlation_id=None
             )
 
@@ -256,7 +258,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="PUT",
                 endpoint="/api/v1/servers/test-server/heartbeat",
-                data=heartbeat_data.dict(),
+                data=heartbeat_data.model_dump(),
                 correlation_id=None
             )
 
@@ -314,7 +316,7 @@ class TestControlPlaneClient:
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/servers/test-server/command-results",
-                data=command_result.dict(),
+                data=command_result.model_dump(),
                 correlation_id=None
             )
 

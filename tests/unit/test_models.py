@@ -22,6 +22,7 @@ class TestUsageRecord:
     def test_valid_usage_record(self) -> None:
         """Test creating a valid usage record."""
         data = {
+            "transaction_id": "test-transaction-001",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "connection_duration_seconds": 120.5,
@@ -43,6 +44,7 @@ class TestUsageRecord:
     def test_negative_duration_validation(self) -> None:
         """Test validation fails for negative durations."""
         data = {
+            "transaction_id": "test-transaction-002",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "connection_duration_seconds": -10.0,
@@ -58,6 +60,7 @@ class TestUsageRecord:
     def test_negative_bytes_validation(self) -> None:
         """Test validation fails for negative bytes."""
         data = {
+            "transaction_id": "test-transaction-003",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "connection_duration_seconds": 120.5,
@@ -73,6 +76,7 @@ class TestUsageRecord:
     def test_response_before_request_validation(self) -> None:
         """Test validation fails when response timestamp is before request."""
         data = {
+            "transaction_id": "test-transaction-004",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "connection_duration_seconds": 120.5,
@@ -92,6 +96,7 @@ class TestEnrichedUsageRecord:
     def test_enriched_usage_record(self) -> None:
         """Test creating an enriched usage record."""
         data = {
+            "transaction_id": "test-transaction-005",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "connection_duration_seconds": 120.5,
@@ -162,6 +167,7 @@ class TestQuotaRefreshRequest:
     def test_valid_quota_request(self) -> None:
         """Test creating a valid quota refresh request."""
         data = {
+            "transaction_id": "test-transaction-001",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "current_usage": 50.0,
@@ -179,6 +185,7 @@ class TestQuotaRefreshRequest:
     def test_negative_usage_validation(self) -> None:
         """Test validation fails for negative current usage."""
         data = {
+            "transaction_id": "test-transaction-002",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "current_usage": -10.0,
@@ -191,6 +198,7 @@ class TestQuotaRefreshRequest:
     def test_zero_quota_validation(self) -> None:
         """Test validation fails for zero requested quota."""
         data = {
+            "transaction_id": "test-transaction-003",
             "api_session_id": "test-session-001",
             "customer_id": "test-customer-001",
             "current_usage": 50.0,

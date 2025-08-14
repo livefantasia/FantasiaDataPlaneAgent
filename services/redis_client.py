@@ -94,7 +94,7 @@ class RedisClient:
         
         try:
             if isinstance(message, RedisMessage):
-                data = message.dict()
+                data = message.model_dump()
             else:
                 data = message
             

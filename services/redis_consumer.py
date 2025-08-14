@@ -13,6 +13,7 @@ from config import ApplicationConfig
 from models import (
     EnrichedUsageRecord,
     QuotaRefreshRequest,
+    QuotaRefreshResponse,
     SessionLifecycleEvent,
     UsageRecord,
 )
@@ -251,7 +252,7 @@ class RedisConsumerService:
         
         # Enrich with server metadata
         enriched_record = EnrichedUsageRecord(
-            **usage_record.dict(),
+            **usage_record.model_dump(),
             server_instance_id=self.config.server_id,
             api_server_region=self.config.server_region,
             processing_timestamp=datetime.utcnow(),
@@ -302,8 +303,8 @@ class RedisConsumerService:
         """Process a quota refresh request."""
         quota_request = QuotaRefreshRequest(**message_data)
         
-        # Submit quota refresh request to ControlPlane
-        await self.control_plane_client.request_quota_refresh(
+        # Submit quota refresh request to ControlPlane and get response
+        response_data = await self.control_plane_client.request_quota_refresh(
             quota_request, correlation_id
         )
         
@@ -314,6 +315,33 @@ class RedisConsumerService:
             requested_quota=quota_request.requested_quota,
             correlation_id=correlation_id,
         )
+        
+        # If we received a response, forward it back to the AudioAPIServer
+        if response_data:
+            try:
+                quota_response = QuotaRefreshResponse(**response_data)
+                
+                # Send response back to AudioAPIServer via quota_response_queue
+                await self.redis_client.push_message(
+                    self.config.quota_response_queue,
+                    quota_response.model_dump()
+                )
+                
+                self.logger.info(
+                    "Quota refresh response forwarded to AudioAPIServer",
+                    session_id=quota_response.api_session_id,
+                    new_quota_amount=quota_response.new_quota_amount,
+                    final_quota=quota_response.final_quota,
+                    correlation_id=correlation_id,
+                )
+                
+            except Exception as e:
+                self.logger.error(
+                    "Failed to process quota refresh response",
+                    error=str(e),
+                    response_data=response_data,
+                    correlation_id=correlation_id,
+                )
 
     async def get_consumer_stats(self) -> Dict[str, Any]:
         """Get consumer statistics."""

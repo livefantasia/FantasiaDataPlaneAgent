@@ -14,19 +14,20 @@ from main import create_app
 @pytest.fixture
 def mock_config() -> ApplicationConfig:
     """Create a mock configuration for testing."""
-    return ApplicationConfig(
-        server_id="test-server-001",
-        server_region="test-region",
-        server_port=8081,
-        server_host="0.0.0.0",
-        redis_host="localhost",
-        redis_port=6379,
-        redis_password=None,
-        redis_db=0,
-        control_plane_url="https://test-control.example.com",
-        control_plane_api_key="test-api-key",
-        log_level="DEBUG",
-    )
+    import os
+    # Set environment variables for testing
+    os.environ["SERVER_ID"] = "test-server-001"
+    os.environ["SERVER_REGION"] = "test-region"
+    os.environ["SERVER_PORT"] = "8081"
+    os.environ["SERVER_HOST"] = "0.0.0.0"
+    os.environ["REDIS_HOST"] = "localhost"
+    os.environ["REDIS_PORT"] = "6379"
+    os.environ["REDIS_DB"] = "0"
+    os.environ["CONTROL_PLANE_URL"] = "https://test-control.example.com"
+    os.environ["CONTROL_PLANE_API_KEY"] = "test-api-key"
+    os.environ["LOG_LEVEL"] = "DEBUG"
+    
+    return ApplicationConfig()
 
 
 @pytest.fixture

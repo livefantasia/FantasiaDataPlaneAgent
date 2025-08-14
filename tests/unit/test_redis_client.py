@@ -135,7 +135,7 @@ class TestRedisClient:
         with patch.object(redis_client, "_ensure_connected", new_callable=AsyncMock):
             await redis_client.push_message(queue, message)
             
-            expected_data = json.dumps(message.dict(), default=str)
+            expected_data = json.dumps(message.model_dump(), default=str)
             mock_client.lpush.assert_called_once_with(queue, expected_data)
 
     @pytest.mark.asyncio

@@ -140,7 +140,7 @@ class ControlPlaneClient:
     ) -> Dict[str, Any]:
         """Submit usage records to ControlPlane."""
         data = {
-            "usage_records": [record.dict() for record in usage_records],
+            "usage_records": [record.model_dump() for record in usage_records],
             "submission_timestamp": datetime.utcnow().isoformat(),
         }
         
@@ -168,7 +168,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{session_event.api_session_id}/start",
-            data=session_event.dict(),
+            data=session_event.model_dump(),
             correlation_id=correlation_id,
         )
         
@@ -190,7 +190,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{quota_request.api_session_id}/refresh",
-            data=quota_request.dict(),
+            data=quota_request.model_dump(),
             correlation_id=correlation_id,
         )
         
@@ -213,7 +213,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{session_event.api_session_id}/complete",
-            data=session_event.dict(),
+            data=session_event.model_dump(),
             correlation_id=correlation_id,
         )
         
@@ -235,7 +235,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint="/api/v1/servers/register",
-            data=registration_data.dict(),
+            data=registration_data.model_dump(),
             correlation_id=correlation_id,
         )
         
@@ -257,7 +257,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="PUT",
             endpoint=f"/api/v1/servers/{heartbeat_data.server_id}/heartbeat",
-            data=heartbeat_data.dict(),
+            data=heartbeat_data.model_dump(),
             correlation_id=correlation_id,
         )
         
@@ -303,7 +303,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/servers/{server_id}/command-results",
-            data=command_result.dict(),
+            data=command_result.model_dump(),
             correlation_id=correlation_id,
         )
         
