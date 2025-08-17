@@ -27,7 +27,12 @@ def mock_config() -> ApplicationConfig:
     os.environ["CONTROL_PLANE_API_KEY"] = "test-api-key"
     os.environ["LOG_LEVEL"] = "DEBUG"
     
-    return ApplicationConfig()
+    return ApplicationConfig(
+        control_plane_url=os.environ["CONTROL_PLANE_URL"],
+        control_plane_api_key=os.environ["CONTROL_PLANE_API_KEY"],
+        server_id=os.environ["SERVER_ID"],
+        server_region=os.environ["SERVER_REGION"]
+    )
 
 
 @pytest.fixture
