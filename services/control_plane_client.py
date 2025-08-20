@@ -133,31 +133,74 @@ class ControlPlaneClient:
 
         raise RuntimeError("All retry attempts failed")
 
-    async def submit_usage_records(
+    async def submit_usage_record(
         self,
-        usage_records: List[EnrichedUsageRecord],
+        usage_record: EnrichedUsageRecord,
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Submit usage records to ControlPlane."""
+        """Submit a single usage record to ControlPlane for a specific session."""
+        # Convert EnrichedUsageRecord to the format expected by ControlPlane
         data = {
-            "usage_records": [record.model_dump() for record in usage_records],
-            "submission_timestamp": datetime.utcnow().isoformat(),
+            "transaction_id": usage_record.transaction_id,
+            "product_code": usage_record.product_code,
+            "server_instance_id": usage_record.server_instance_id,
+            "api_server_region": usage_record.api_server_region,
+            "processing_timestamp": usage_record.processing_timestamp.isoformat(),
+            "agent_version": usage_record.agent_version,
+            "connection_duration_seconds": usage_record.connection_duration_seconds,
+            "data_bytes_processed": usage_record.data_bytes_processed,
+            "audio_duration_seconds": usage_record.audio_duration_seconds,
+            "request_count": usage_record.request_count,
+            "request_timestamp": usage_record.request_timestamp.isoformat(),
+            "response_timestamp": usage_record.response_timestamp.isoformat(),
         }
         
         result = await self._make_request(
             method="POST",
-            endpoint="/api/v1/usage-records",
+            endpoint=f"/api/v1/sessions/{usage_record.api_session_id}/usage-records",
             data=data,
             correlation_id=correlation_id,
         )
         
         self.logger.info(
-            "Usage records submitted",
-            count=len(usage_records),
+            "Usage record submitted",
+            session_id=usage_record.api_session_id,
+            transaction_id=usage_record.transaction_id,
             correlation_id=correlation_id,
         )
         
         return result
+
+    async def submit_usage_records(
+        self,
+        usage_records: List[EnrichedUsageRecord],
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Submit multiple usage records to ControlPlane (batch processing)."""
+        results = []
+        for record in usage_records:
+            try:
+                result = await self.submit_usage_record(record, correlation_id)
+                results.append(result)
+            except Exception as e:
+                self.logger.error(
+                    "Failed to submit usage record",
+                    session_id=record.api_session_id,
+                    transaction_id=record.transaction_id,
+                    error=str(e),
+                    correlation_id=correlation_id,
+                )
+                # Continue with other records even if one fails
+                continue
+        
+        self.logger.info(
+            "Usage records batch submitted",
+            total_count=len(usage_records),
+            successful_count=len(results),
+            correlation_id=correlation_id,
+        )
+        
+        return {"submitted_count": len(results), "total_count": len(usage_records)}
 
     async def notify_session_start(
         self,
@@ -165,10 +208,17 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Notify ControlPlane of session start."""
+        # Convert to snake_case format expected by ControlPlane
+        data = {
+            "started_at": session_event.timestamp.isoformat(),
+            "client_info": session_event.metadata or {},
+            "timestamp": session_event.timestamp.isoformat(),
+        }
+        
         result = await self._make_request(
             method="POST",
-            endpoint=f"/api/v1/sessions/{session_event.api_session_id}/start",
-            data=session_event.model_dump(),
+            endpoint=f"/api/v1/sessions/{session_event.api_session_id}/started",
+            data=data,
             correlation_id=correlation_id,
         )
         
@@ -189,10 +239,10 @@ class ControlPlaneClient:
         """Request additional quota for active session."""
         # Transform QuotaRefreshRequest to SessionRefreshRequest format for ControlPlane
         session_refresh_data = {
-            "apiSessionId": quota_request.api_session_id,
-            "transactionId": quota_request.transaction_id,
+            "transaction_id": quota_request.transaction_id,
+            "product_code": quota_request.product_code.value,
             "timestamp": quota_request.timestamp.isoformat() if hasattr(quota_request.timestamp, 'isoformat') else str(quota_request.timestamp)
-        }        
+        }
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{quota_request.api_session_id}/refresh",
@@ -215,10 +265,18 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Notify ControlPlane of session completion."""
+        # Convert to snake_case format expected by ControlPlane
+        data = {
+            "completed_at": session_event.timestamp.isoformat(),
+            "disconnect_reason": session_event.disconnect_reason,
+            "final_usage_summary": session_event.final_usage_summary or {},
+            "timestamp": session_event.timestamp.isoformat(),
+        }
+        
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/sessions/{session_event.api_session_id}/completed",
-            data=session_event.model_dump(),
+            data=data,
             correlation_id=correlation_id,
         )
         

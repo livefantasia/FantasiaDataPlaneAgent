@@ -15,8 +15,8 @@ class UsageRecord(BaseModel):
     api_session_id: str = Field(..., description="Unique session identifier")
     customer_id: str = Field(..., description="Customer identifier")
     product_code: ProductCode = Field(
-        default=ProductCode.SPEECH_TO_TEXT_STANDARD,
-        description="Product code for billing",
+        default=ProductCode.SPEECH_TRANSCRIPTION,
+        description="Product code for billing"
     )
     connection_duration_seconds: float = Field(
         ..., ge=0, description="Total connection duration in seconds"
@@ -27,6 +27,7 @@ class UsageRecord(BaseModel):
     audio_duration_seconds: float = Field(
         ..., ge=0, description="Total audio duration processed in seconds"
     )
+    request_count: int = Field(..., ge=0, description="Number of API requests")
     request_timestamp: datetime = Field(..., description="When request was initiated")
     response_timestamp: datetime = Field(..., description="When response was sent")
 

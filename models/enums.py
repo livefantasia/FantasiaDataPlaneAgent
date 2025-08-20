@@ -4,9 +4,11 @@ from enum import Enum
 
 
 class ProductCode(str, Enum):
-    """Available product codes."""
+    """Product codes for billing and usage tracking"""
 
-    SPEECH_TO_TEXT_STANDARD = "SPEECH_TO_TEXT_STANDARD"
+    SPEECH_TRANSCRIPTION = "speech_transcription"
+    SPEECH_SYNTHESIS = "speech_synthesis"
+    REAL_TIME_STREAMING = "real_time_streaming"
 
 
 class SessionEventType(str, Enum):

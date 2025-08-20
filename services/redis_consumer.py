@@ -17,6 +17,7 @@ from models import (
     SessionLifecycleEvent,
     UsageRecord,
 )
+from models.enums import ProductCode
 from utils import create_contextual_logger
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
@@ -301,6 +302,10 @@ class RedisConsumerService:
         correlation_id: str
     ) -> None:
         """Process a quota refresh request."""
+        # Add a default product_code if it's missing for backward compatibility
+        if 'product_code' not in message_data:
+            message_data['product_code'] = ProductCode.SPEECH_TRANSCRIPTION.value
+
         quota_request = QuotaRefreshRequest(**message_data)
         
         # Submit quota refresh request to ControlPlane and get response

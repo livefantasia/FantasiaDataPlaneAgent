@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from .enums import ProductCode
+
 
 class QuotaRefreshRequest(BaseModel):
     """Request for quota refresh."""
@@ -11,8 +13,10 @@ class QuotaRefreshRequest(BaseModel):
     transaction_id: str = Field(..., description="Unique transaction identifier for idempotency")
     api_session_id: str = Field(..., description="Session identifier")
     customer_id: str = Field(..., description="Customer identifier")
-    current_usage: float = Field(..., ge=0, description="Current usage amount")
-    requested_quota: float = Field(..., gt=0, description="Requested quota amount")
+    product_code: ProductCode = Field(
+        default=ProductCode.SPEECH_TRANSCRIPTION,
+        description="Product code for billing"
+    )
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Request timestamp"
     )
