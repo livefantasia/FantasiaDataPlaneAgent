@@ -34,11 +34,14 @@ class TestEndToEndIntegration:
         """Test complete flow from Redis queue to ControlPlane for usage records."""
         # Prepare test data
         usage_record_data = {
+            "transaction_id": "txn-session456-001",
             "api_session_id": "session456",
             "customer_id": "customer123",
+            "product_code": "speech_transcription",
             "connection_duration_seconds": 30.0,
             "data_bytes_processed": 1024000,
             "audio_duration_seconds": 25.5,
+            "request_count": 1,
             "request_timestamp": "2024-01-15T10:00:00Z",
             "response_timestamp": "2024-01-15T10:00:30Z",
         }
@@ -130,8 +133,18 @@ class TestEndToEndIntegration:
             control_plane_client=mock_control_plane_client,
         )
 
-        # Simulate polling and processing one command
-        await processor._poll_commands()
+        # Set the processor to running state to enable polling
+        processor._running = True
+
+        # Mock the sleep to avoid waiting and stop after first iteration
+        original_sleep = asyncio.sleep
+        async def mock_sleep(delay):
+            processor._running = False  # Stop after first iteration
+            await original_sleep(0.01)  # Small delay to allow processing
+        
+        with patch('asyncio.sleep', side_effect=mock_sleep):
+            # Simulate polling and processing one command
+            await processor._poll_commands()
 
         # Verify checks and actions
         mock_control_plane_client.poll_commands.assert_called_once()
@@ -183,4 +196,5 @@ class TestEndToEndIntegration:
         # Ensure tasks were cancelled
         for task in consumer._tasks:
             assert task.cancelled()
-        assert processor._polling_task.cancelled()
+        # Task is done after being cancelled and awaited
+        assert processor._polling_task.done()

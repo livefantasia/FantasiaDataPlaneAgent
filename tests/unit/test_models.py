@@ -28,13 +28,14 @@ class TestUsageRecord:
             connection_duration_seconds=120.5,
             data_bytes_processed=1024000,
             audio_duration_seconds=110.0,
+            request_count=0,
             request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
             response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
         )
         
         assert record.api_session_id == "test-session-001"
         assert record.customer_id == "test-customer-001"
-        assert record.product_code == ProductCode.SPEECH_TO_TEXT_STANDARD
+        assert record.product_code == ProductCode.SPEECH_TRANSCRIPTION
         assert record.connection_duration_seconds == 120.5
         assert record.data_bytes_processed == 1024000
         assert record.audio_duration_seconds == 110.0
@@ -49,6 +50,7 @@ class TestUsageRecord:
                 connection_duration_seconds=-10.0,
                 data_bytes_processed=1024000,
                 audio_duration_seconds=110.0,
+                request_count=0,
                 request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
                 response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
             )
@@ -63,6 +65,7 @@ class TestUsageRecord:
                 connection_duration_seconds=120.5,
                 data_bytes_processed=-1000,
                 audio_duration_seconds=110.0,
+                request_count=0,
                 request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
                 response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
             )
@@ -77,6 +80,7 @@ class TestUsageRecord:
                 connection_duration_seconds=120.5,
                 data_bytes_processed=1024000,
                 audio_duration_seconds=110.0,
+                request_count=0,
                 request_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
                 response_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
             )
@@ -94,6 +98,7 @@ class TestEnrichedUsageRecord:
             connection_duration_seconds=120.5,
             data_bytes_processed=1024000,
             audio_duration_seconds=110.0,
+            request_count=0,
             request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
             response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
             server_instance_id="server-001",
@@ -137,10 +142,10 @@ class TestSessionLifecycleEvent:
 
     def test_invalid_event_type(self) -> None:
         """Test validation fails for invalid event type."""
-        with pytest.raises(ValueError):
-            # This should raise ValueError when trying to access invalid enum member
+        with pytest.raises(KeyError):
+            # This should raise KeyError when trying to access invalid enum member
             SessionEventType["INVALID"]
- 
+
 
 class TestQuotaRefreshRequest:
     """Test cases for QuotaRefreshRequest model."""
@@ -151,37 +156,23 @@ class TestQuotaRefreshRequest:
             transaction_id="test-transaction-001",
             api_session_id="test-session-001",
             customer_id="test-customer-001",
-            current_usage=50.0,
-            requested_quota=100.0,
+            product_code=ProductCode.SPEECH_SYNTHESIS,
         )
-        
+
         assert request.api_session_id == "test-session-001"
         assert request.customer_id == "test-customer-001"
-        assert request.current_usage == 50.0
-        assert request.requested_quota == 100.0
+        assert request.product_code == ProductCode.SPEECH_SYNTHESIS
         assert request.timestamp is not None
 
-    def test_negative_usage_validation(self) -> None:
-        """Test validation fails for negative current usage."""
-        with pytest.raises(ValidationError):
-            QuotaRefreshRequest(
-                transaction_id="test-transaction-002",
-                api_session_id="test-session-001",
-                customer_id="test-customer-001",
-                current_usage=-10.0,
-                requested_quota=100.0,
-            )
+    def test_default_product_code(self) -> None:
+        """Test that the default product code is assigned correctly."""
+        request = QuotaRefreshRequest(
+            transaction_id="test-transaction-002",
+            api_session_id="test-session-002",
+            customer_id="test-customer-002",
+        )
 
-    def test_zero_quota_validation(self) -> None:
-        """Test validation fails for zero requested quota."""
-        with pytest.raises(ValidationError):
-            QuotaRefreshRequest(
-                transaction_id="test-transaction-003",
-                api_session_id="test-session-001",
-                customer_id="test-customer-001",
-                current_usage=50.0,
-                requested_quota=0.0,
-            )
+        assert request.product_code == ProductCode.SPEECH_TRANSCRIPTION
 
 
 class TestRemoteCommand:
@@ -223,6 +214,6 @@ class TestRemoteCommand:
 
     def test_invalid_command_type(self) -> None:
         """Test validation fails for invalid command type."""
-        with pytest.raises(ValueError):
-            # This should raise ValueError when trying to access invalid enum member
+        with pytest.raises(KeyError):
+            # This should raise KeyError when trying to access invalid enum member
             CommandType["INVALID_COMMAND"]

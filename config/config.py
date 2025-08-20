@@ -5,8 +5,8 @@ Configuration is loaded from environment variables and .env files.
 """
 
 from typing import List, Optional
-from pydantic import Field, field_validator, ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ServerConfig(BaseSettings):
@@ -18,8 +18,8 @@ class ServerConfig(BaseSettings):
     debug: bool = False
 
     # Server configuration
-    server_id: str = Field(alias="SERVER_ID")
-    server_region: str = Field(alias="SERVER_REGION")
+    server_id: str = Field(default="", alias="SERVER_ID")
+    server_region: str = Field(default="", alias="SERVER_REGION")
     server_port: int = Field(default=8081, alias="SERVER_PORT")
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
     server_ip: str = Field(default="0.0.0.0", alias="SERVER_IP")
@@ -49,8 +49,8 @@ class ControlPlaneConfig(BaseSettings):
     """ControlPlane configuration settings."""
 
     # ControlPlane configuration
-    control_plane_url: str = Field(alias="CONTROL_PLANE_URL")
-    control_plane_api_key: str = Field(alias="CONTROL_PLANE_API_KEY")
+    control_plane_url: str = Field(default="", alias="CONTROL_PLANE_URL")
+    control_plane_api_key: str = Field(default="", alias="CONTROL_PLANE_API_KEY")
     control_plane_timeout: int = 30
     control_plane_retry_attempts: int = 3
     control_plane_retry_backoff_factor: float = 2.0
@@ -107,6 +107,6 @@ class ApplicationConfig(
 ):
     """Main application configuration that combines all configuration domains."""
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )

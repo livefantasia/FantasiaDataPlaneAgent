@@ -280,11 +280,11 @@ class RedisConsumerService:
         """Process a session lifecycle event."""
         event = SessionLifecycleEvent(**message_data)
         
-        if event.event_type.value == "start":
+        if event.event_type == "start":
             await self.control_plane_client.notify_session_start(
                 event, correlation_id
             )
-        elif event.event_type.value == "complete":
+        elif event.event_type == "complete":
             await self.control_plane_client.notify_session_complete(
                 event, correlation_id
             )
@@ -292,7 +292,7 @@ class RedisConsumerService:
         self.logger.info(
             "Session lifecycle event processed",
             session_id=event.api_session_id,
-            event_type=event.event_type.value,
+            event_type=event.event_type,
             correlation_id=correlation_id,
         )
 

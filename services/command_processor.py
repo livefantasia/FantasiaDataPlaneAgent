@@ -101,7 +101,7 @@ class CommandProcessor:
             self.logger.info(
                 "Command already executed, skipping",
                 command_id=command.command_id,
-                command_type=command.command_type.value,
+                command_type=command.command_type,
                 correlation_id=correlation_id,
             )
             return
@@ -109,7 +109,7 @@ class CommandProcessor:
         self.logger.info(
             "Processing command",
             command_id=command.command_id,
-            command_type=command.command_type.value,
+            command_type=command.command_type,
             correlation_id=correlation_id,
         )
 
@@ -135,7 +135,7 @@ class CommandProcessor:
             self.logger.error(
                 "Command execution failed",
                 command_id=command.command_id,
-                command_type=command.command_type.value,
+                command_type=command.command_type,
                 error=str(e),
                 correlation_id=correlation_id,
             )

@@ -418,7 +418,8 @@ class ControlPlaneClient:
             if not self._client:
                 return {
                     "status": "unhealthy",
-                    "error": "Client not started"
+                    "error": "Client not started",
+                    "base_url": self.config.control_plane_url,
                 }
             
             # Test basic connectivity

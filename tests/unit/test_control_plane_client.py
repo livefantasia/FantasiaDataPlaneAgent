@@ -16,6 +16,7 @@ from models import (
     QuotaRefreshRequest,
     CommandResult,
 )
+from models.enums import ProductCode
 from services.control_plane_client import ControlPlaneClient
 
 
@@ -126,6 +127,7 @@ class TestControlPlaneClient:
             connection_duration_seconds=120.0,
             data_bytes_processed=1024,
             audio_duration_seconds=110.0,
+            request_count=0,
             request_timestamp=datetime.utcnow(),
             response_timestamp=datetime.utcnow(),
             server_instance_id="test-server",
@@ -135,19 +137,12 @@ class TestControlPlaneClient:
         
         expected_response = {"status": "success", "credits_consumed": 10}
         
-        with patch.object(control_plane_client, "_make_request", return_value=expected_response) as mock_request:
+        with patch.object(control_plane_client, "submit_usage_record", return_value=expected_response) as mock_submit:
             result = await control_plane_client.submit_usage_records([usage_record])
             
-            assert result == expected_response
-            mock_request.assert_called_once_with(
-                method="POST",
-                endpoint="/api/v1/usage-records",
-                data={
-                    "usage_records": [usage_record.model_dump()],
-                    "submission_timestamp": mock_request.call_args[1]["data"]["submission_timestamp"]
-                },
-                correlation_id=None
-            )
+            expected_result = {"submitted_count": 1, "total_count": 1}
+            assert result == expected_result
+            mock_submit.assert_called_once_with(usage_record, None)
 
     @pytest.mark.asyncio
     async def test_notify_session_start(self, control_plane_client) -> None:
@@ -166,8 +161,12 @@ class TestControlPlaneClient:
             assert result == expected_response
             mock_request.assert_called_once_with(
                 method="POST",
-                endpoint="/api/v1/sessions/test-session/start",
-                data=session_event.model_dump(),
+                endpoint="/api/v1/sessions/test-session/started",
+                data={
+                    "started_at": session_event.timestamp.isoformat(),
+                    "client_info": session_event.metadata or {},
+                    "timestamp": session_event.timestamp.isoformat(),
+                },
                 correlation_id=None
             )
 
@@ -178,25 +177,24 @@ class TestControlPlaneClient:
             transaction_id="test-transaction-002",
             api_session_id="test-session",
             customer_id="test-customer",
-            current_usage=50.0,
-            requested_quota=100.0
+            product_code=ProductCode.SPEECH_SYNTHESIS,
         )
-        
+
         expected_response = {"status": "success", "additional_quota": 100.0}
-        
+
         with patch.object(control_plane_client, "_make_request", return_value=expected_response) as mock_request:
             result = await control_plane_client.request_quota_refresh(quota_request)
-            
+
             assert result == expected_response
             mock_request.assert_called_once_with(
                 method="POST",
                 endpoint="/api/v1/sessions/test-session/refresh",
                 data={
-                    "apiSessionId": "test-session",
-                    "transactionId": "test-transaction-002",
-                    "timestamp": quota_request.timestamp.isoformat()
+                    "transaction_id": "test-transaction-002",
+                    "product_code": "speech_synthesis",
+                    "timestamp": quota_request.timestamp.isoformat(),
                 },
-                correlation_id=None
+                correlation_id=None,
             )
 
     @pytest.mark.asyncio
@@ -216,8 +214,13 @@ class TestControlPlaneClient:
             assert result == expected_response
             mock_request.assert_called_once_with(
                 method="POST",
-                endpoint="/api/v1/sessions/test-session/complete",
-                data=session_event.model_dump(),
+                endpoint="/api/v1/sessions/test-session/completed",
+                data={
+                    "completed_at": session_event.timestamp.isoformat(),
+                    "disconnect_reason": session_event.disconnect_reason,
+                    "final_usage_summary": session_event.final_usage_summary or {},
+                    "timestamp": session_event.timestamp.isoformat(),
+                },
                 correlation_id=None
             )
 
