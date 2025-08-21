@@ -89,3 +89,4 @@ models/*.pth
 .venv/
 keys/
 *.txt
+.mypy_cache/

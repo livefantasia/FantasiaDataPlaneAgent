@@ -313,20 +313,24 @@ class ControlPlaneClient:
 
     async def send_heartbeat(
         self,
+        server_id: str,
         heartbeat_data: HeartbeatData,
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send heartbeat to ControlPlane."""
+        # Use mode='json' to ensure proper datetime serialization
+        data = heartbeat_data.model_dump(mode='json')
+        
         result = await self._make_request(
             method="PUT",
-            endpoint=f"/api/v1/servers/{heartbeat_data.server_id}/heartbeat",
-            data=heartbeat_data.model_dump(),
+            endpoint=f"/api/v1/servers/{server_id}/heartbeat",
+            data=data,
             correlation_id=correlation_id,
         )
         
         self.logger.debug(
             "Heartbeat sent",
-            server_id=heartbeat_data.server_id,
+            server_id=server_id,
             correlation_id=correlation_id,
         )
         
@@ -366,7 +370,7 @@ class ControlPlaneClient:
         result = await self._make_request(
             method="POST",
             endpoint=f"/api/v1/servers/{server_id}/command-results",
-            data=command_result.model_dump(),
+            data=command_result.model_dump(mode='json'),
             correlation_id=correlation_id,
         )
         

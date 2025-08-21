@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
-from config import ApplicationConfig
+from config import ApplicationConfig, ControlPlaneConfig
 from models import HeartbeatData, ServerRegistration
 from utils import create_contextual_logger
 from .control_plane_client import ControlPlaneClient
@@ -134,13 +134,18 @@ class HealthMetricsService:
                 version=self.config.app_version,
                 ip_address=self.config.server_ip,
                 port=self.config.server_port,
-                capabilities=[
-                    "usage_tracking",
-                    "session_management", 
-                    "quota_refresh",
-                    "remote_commands",
-                    "health_monitoring",
-                ],
+                capabilities={
+                    "supported_languages": ["en-US"],  # Default supported language
+                    "max_concurrent_sessions": 100,    # Default max sessions
+                    "supported_models": ["whisper-1"], # Default models
+                    "features": [
+                        "usage_tracking",
+                        "session_management", 
+                        "quota_refresh",
+                        "remote_commands",
+                        "health_monitoring",
+                    ],
+                },
             )
             
             correlation_id = str(uuid.uuid4())
@@ -170,19 +175,26 @@ class HealthMetricsService:
                 # Get current status
                 health_status = await self.get_health_status()
                 
+                # Map health status to server status enum
+                status_mapping = {
+                    "healthy": "online",
+                    "degraded": "degraded", 
+                    "unhealthy": "offline"
+                }
+                server_status = status_mapping.get(health_status["status"], "offline")
+                
                 heartbeat_data = HeartbeatData(
-                    server_id=self.config.server_id,
-                    status=health_status["status"],
+                    status=server_status,
                     metrics={
                         "uptime_seconds": int(time.time() - self._start_time),
-                        "redis_connected": health_status["redis_connected"],
-                        "control_plane_connected": health_status["control_plane_connected"],
+                        "redis_connected": 1 if health_status["redis_connected"] else 0,
+                        "control_plane_connected": 1 if health_status["control_plane_connected"] else 0,
                     },
                 )
                 
                 correlation_id = str(uuid.uuid4())
                 await self.control_plane_client.send_heartbeat(
-                    heartbeat_data, correlation_id
+                    self.config.server_id, heartbeat_data, correlation_id
                 )
                 
                 # Wait for next heartbeat
@@ -222,12 +234,13 @@ class HealthMetricsService:
         redis_connection_status.labels(server_id=server_id).set(
             1 if redis_connected else 0
         )
-        
-        control_plane_health = await self.control_plane_client.health_check()
-        cp_connected = control_plane_health.get("status") == "healthy"
-        control_plane_connection_status.labels(server_id=server_id).set(
-            1 if cp_connected else 0
-        )
+
+        if self.config.control_plane_health_check_enabled:
+            control_plane_health = await self.control_plane_client.health_check()
+            cp_connected = control_plane_health.get("status") == "healthy"
+            control_plane_connection_status.labels(server_id=server_id).set(
+                1 if cp_connected else 0
+            )
         
         # Update queue depth metrics
         if redis_connected:
@@ -244,9 +257,13 @@ class HealthMetricsService:
         redis_health = await self.redis_client.health_check()
         redis_connected = redis_health.get("status") == "healthy"
         
-        # Check ControlPlane connection
-        cp_health = await self.control_plane_client.health_check()
-        cp_connected = cp_health.get("status") == "healthy"
+        # Check ControlPlane connection only if enabled
+        if self.config.control_plane_health_check_enabled:
+            cp_health = await self.control_plane_client.health_check()
+            cp_connected = cp_health.get("status") == "healthy"
+        else:
+            cp_health = {"status": "disabled", "message": "Health check disabled"}
+            cp_connected = True  # Consider as healthy if disabled
         
         # Determine overall status
         if redis_connected and cp_connected:

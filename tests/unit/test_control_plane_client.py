@@ -233,7 +233,12 @@ class TestControlPlaneClient:
             version="1.0.0",
             ip_address="192.168.1.100",
             port=8081,
-            capabilities=["usage_tracking", "session_management"]
+            capabilities={
+                "supported_languages": ["en-US"],
+                "max_concurrent_sessions": 100,
+                "supported_models": ["whisper-1"],
+                "features": ["usage_tracking", "session_management"]
+            }
         )
         
         expected_response = {"status": "success", "server_registered": True}
@@ -253,21 +258,20 @@ class TestControlPlaneClient:
     async def test_send_heartbeat(self, control_plane_client) -> None:
         """Test sending heartbeat."""
         heartbeat_data = HeartbeatData(
-            server_id="test-server",
-            status="healthy",
+            status="online",
             metrics={"uptime": 3600}
         )
         
         expected_response = {"status": "success"}
         
         with patch.object(control_plane_client, "_make_request", return_value=expected_response) as mock_request:
-            result = await control_plane_client.send_heartbeat(heartbeat_data)
+            result = await control_plane_client.send_heartbeat("test-server", heartbeat_data)
             
             assert result == expected_response
             mock_request.assert_called_once_with(
                 method="PUT",
                 endpoint="/api/v1/servers/test-server/heartbeat",
-                data=heartbeat_data.model_dump(),
+                data=heartbeat_data.model_dump(mode='json'),
                 correlation_id=None
             )
 

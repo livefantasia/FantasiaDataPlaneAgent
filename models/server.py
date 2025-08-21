@@ -1,7 +1,7 @@
 """Server management models for DataPlane Agent."""
 
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -14,19 +14,15 @@ class ServerRegistration(BaseModel):
     version: str = Field(..., description="Server version")
     ip_address: str = Field(..., description="Server IP address")
     port: int = Field(..., ge=1, le=65535, description="Server port")
-    capabilities: List[str] = Field(
-        default_factory=list, description="Server capabilities"
+    capabilities: Dict[str, Any] = Field(
+        default_factory=dict, description="Server capabilities"
     )
 
 
 class HeartbeatData(BaseModel):
     """Heartbeat data."""
 
-    server_id: str = Field(..., description="Server identifier")
-    timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Heartbeat timestamp"
-    )
-    status: str = Field(default="healthy", description="Server status")
+    status: str = Field(default="online", description="Server status")
     metrics: Optional[Dict[str, Union[int, float, str]]] = Field(
         default=None, description="Basic metrics"
     )

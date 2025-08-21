@@ -11,6 +11,7 @@ from .config import (
     ControlPlaneConfig,
     MonitoringConfig,
     SecurityConfig,
+    str_to_bool,
 )
 
 
@@ -27,4 +28,5 @@ __all__ = [
     "MonitoringConfig",
     "SecurityConfig",
     "load_config",
+    "str_to_bool",
 ]

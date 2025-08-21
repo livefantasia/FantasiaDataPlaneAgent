@@ -4,9 +4,50 @@ This module contains all configuration classes organized by domain.
 Configuration is loaded from environment variables and .env files.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def str_to_bool(value: Any) -> bool:
+    """Convert various string representations to boolean values.
+    
+    This function provides consistent boolean conversion from environment variables
+    and other string sources. It can be used as a field validator for Pydantic models.
+    
+    Args:
+        value: The value to convert. Can be bool, str, int, or any other type.
+        
+    Returns:
+        bool: The converted boolean value.
+        
+    Examples:
+        >>> str_to_bool("true")
+        True
+        >>> str_to_bool("false")
+        False
+        >>> str_to_bool("1")
+        True
+        >>> str_to_bool("0")
+        False
+        >>> str_to_bool("yes")
+        True
+        >>> str_to_bool("no")
+        False
+        
+        # Usage in Pydantic field validators:
+        @field_validator("my_bool_field", mode="before")
+        @classmethod
+        def validate_my_bool_field(cls, v) -> bool:
+            return str_to_bool(v)
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on", "enabled")
+    if isinstance(value, int):
+        return bool(value)
+    return bool(value)
 
 
 class ServerConfig(BaseSettings):
@@ -51,10 +92,19 @@ class ControlPlaneConfig(BaseSettings):
     # ControlPlane configuration
     control_plane_url: str = Field(default="", alias="CONTROL_PLANE_URL")
     control_plane_api_key: str = Field(default="", alias="CONTROL_PLANE_API_KEY")
+    control_plane_health_check_enabled: bool = Field(
+        default=True, alias="CONTROL_PLANE_HEALTH_CHECK_ENABLED"
+    )
     control_plane_timeout: int = 30
     control_plane_retry_attempts: int = 3
     control_plane_retry_backoff_factor: float = 2.0
     jwt_public_keys_cache_ttl: int = 3600
+
+    @field_validator("control_plane_health_check_enabled", mode="before")
+    @classmethod
+    def validate_control_plane_health_check_enabled(cls, v) -> bool:
+        """Convert string boolean values to actual boolean."""
+        return str_to_bool(v)
 
     @field_validator("control_plane_url")
     @classmethod
