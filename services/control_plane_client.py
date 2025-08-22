@@ -416,6 +416,32 @@ class ControlPlaneClient:
         
         return result
 
+    async def notify_server_shutdown(
+        self,
+        server_id: str,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Notify ControlPlane of graceful server shutdown."""
+        data = {
+            "shutdown_timestamp": datetime.utcnow().isoformat(),
+            "reason": "graceful_shutdown",
+        }
+        
+        result = await self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/servers/{server_id}/shutdown",
+            data=data,
+            correlation_id=correlation_id,
+        )
+        
+        self.logger.info(
+            "Server shutdown notification sent",
+            server_id=server_id,
+            correlation_id=correlation_id,
+        )
+        
+        return result
+
     async def health_check(self) -> Dict[str, Any]:
         """Perform ControlPlane health check."""
         try:

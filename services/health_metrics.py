@@ -112,6 +112,19 @@ class HealthMetricsService:
 
         self._running = False
         
+        # Notify ControlPlane of shutdown if registered
+        if self._registered:
+            try:
+                await self.control_plane_client.notify_server_shutdown(
+                    server_id=self.config.server_id
+                )
+                self.logger.info("Shutdown notification sent to ControlPlane")
+            except Exception as e:
+                self.logger.error(
+                    "Failed to notify ControlPlane of shutdown", 
+                    error=str(e)
+                )
+        
         # Cancel background tasks
         if self._heartbeat_task:
             self._heartbeat_task.cancel()

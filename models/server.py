@@ -15,7 +15,12 @@ class ServerRegistration(BaseModel):
     ip_address: str = Field(..., description="Server IP address")
     port: int = Field(..., ge=1, le=65535, description="Server port")
     capabilities: Dict[str, Any] = Field(
-        default_factory=dict, description="Server capabilities"
+        default_factory=lambda: {
+            "max_concurrent_sessions": 10,
+            "supported_products": "speech_transcription",
+            "supported_languages": "en-US",
+        },
+        description="Server capabilities with simplified structure"
     )
 
 

@@ -400,3 +400,37 @@ class TestControlPlaneClient:
             assert result["status"] == "unhealthy"
             assert "Connection failed" in result["error"]
             assert result["base_url"] == mock_config.control_plane_url
+
+    @pytest.mark.asyncio
+    async def test_notify_server_shutdown_success(self, control_plane_client) -> None:
+        """Test successful server shutdown notification."""
+        control_plane_client._client = AsyncMock()  # Simulate started client
+        
+        mock_response = {"success": True, "message": "Server shutdown notification received"}
+        
+        with patch.object(control_plane_client, "_make_request", return_value=mock_response) as mock_request:
+            server_id = "test-server-001"
+            correlation_id = "test-correlation-123"
+            
+            result = await control_plane_client.notify_server_shutdown(
+                server_id=server_id,
+                correlation_id=correlation_id
+            )
+            
+            assert result["success"] is True
+            assert "shutdown notification received" in result["message"]
+            
+            mock_request.assert_called_once_with(
+                method="POST",
+                endpoint="/api/v1/servers/test-server-001/shutdown",
+                data={},
+                correlation_id="test-correlation-123"
+            )
+
+    @pytest.mark.asyncio
+    async def test_notify_server_shutdown_client_not_started(self, control_plane_client) -> None:
+        """Test shutdown notification when client is not started."""
+        control_plane_client._client = None  # Simulate client not started
+        
+        with pytest.raises(RuntimeError, match="ControlPlane client not started"):
+            await control_plane_client.notify_server_shutdown("test-server-001")
