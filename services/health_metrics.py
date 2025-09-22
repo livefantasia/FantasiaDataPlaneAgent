@@ -13,7 +13,7 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 from config import ApplicationConfig, ControlPlaneConfig
 from models import HeartbeatData, ServerRegistration
-from utils import create_contextual_logger
+from utils import create_contextual_logger, get_connection_state_manager
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
 
@@ -88,6 +88,10 @@ class HealthMetricsService:
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._metrics_task: Optional[asyncio.Task[None]] = None
         self._registered = False
+        
+        # Initialize connection state manager
+        self._connection_state = get_connection_state_manager(config)
+        self._last_health_check_time = 0.0
 
     async def start(self) -> None:
         """Start health monitoring and metrics collection."""
@@ -148,20 +152,21 @@ class HealthMetricsService:
                 ip_address=self.config.server_ip,
                 port=self.config.server_port,
                 capabilities={
-                    "supported_languages": ["en-US"],  # Default supported language
-                    "max_concurrent_sessions": 100,    # Default max sessions
-                    "supported_models": ["whisper-1"], # Default models
-                    "features": [
-                        "usage_tracking",
-                        "session_management", 
-                        "quota_refresh",
-                        "remote_commands",
-                        "health_monitoring",
-                    ],
+                    "max_concurrent_sessions": 100,
+                    "supported_products": "speech_transcription",   # String as per ControlPlane interface
+                    "supported_languages": "en-US",                # String as per ControlPlane interface  
                 },
             )
             
             correlation_id = str(uuid.uuid4())
+            
+            self.logger.info(
+                "Attempting server registration",
+                server_id=self.config.server_id,
+                control_plane_url=self.config.control_plane_url,
+                correlation_id=correlation_id,
+            )
+            
             await self.control_plane_client.register_server(
                 registration_data, correlation_id
             )
@@ -178,13 +183,43 @@ class HealthMetricsService:
                 "Failed to register server",
                 error=str(e),
                 server_id=self.config.server_id,
+                control_plane_url=self.config.control_plane_url,
             )
-            # Don't fail startup on registration failure
+            # Don't fail startup on registration failure, but ensure heartbeat doesn't start
+            self._registered = False
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats to ControlPlane."""
         while self._running:
             try:
+                # If server is not registered, try to register first
+                if not self._registered:
+                    self.logger.info(
+                        "Server not registered, attempting registration",
+                        server_id=self.config.server_id,
+                    )
+                    await self._register_server()
+                    
+                    # If registration still failed, wait and try again later
+                    if not self._registered:
+                        self.logger.debug(
+                            "Registration failed, will retry on next heartbeat cycle",
+                            server_id=self.config.server_id,
+                        )
+                        await asyncio.sleep(self.config.heartbeat_interval)
+                        continue
+                
+                # Check if we should attempt the request based on circuit breaker
+                if not self._connection_state.should_attempt_request():
+                    self.logger.debug(
+                        "Skipping heartbeat due to circuit breaker",
+                        connection_info=self._connection_state.get_connection_info(),
+                    )
+                    # Wait for the appropriate backoff time
+                    backoff_delay = self._connection_state.get_backoff_delay()
+                    await asyncio.sleep(min(backoff_delay, self.config.heartbeat_interval))
+                    continue
+                
                 # Get current status
                 health_status = await self.get_health_status()
                 
@@ -210,17 +245,31 @@ class HealthMetricsService:
                     self.config.server_id, heartbeat_data, correlation_id
                 )
                 
+                # Mark success in connection state
+                self._connection_state.mark_success()
+                
                 # Wait for next heartbeat
                 await asyncio.sleep(self.config.heartbeat_interval)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                # Mark failure in connection state
+                self._connection_state.mark_failure()
+                
                 self.logger.error(
                     "Error in heartbeat loop",
                     error=str(e),
+                    connection_info=self._connection_state.get_connection_info(),
                 )
-                await asyncio.sleep(5)  # Short delay on error
+                
+                # Use progressive backoff instead of fixed delay
+                backoff_delay = self._connection_state.get_backoff_delay()
+                self.logger.info(
+                    "Applying backoff delay for heartbeat",
+                    delay_seconds=backoff_delay,
+                )
+                await asyncio.sleep(backoff_delay)
 
     async def _metrics_collection_loop(self) -> None:
         """Collect and update Prometheus metrics."""
@@ -236,7 +285,9 @@ class HealthMetricsService:
                     "Error in metrics collection",
                     error=str(e),
                 )
-                await asyncio.sleep(5)
+                # Use progressive backoff for metrics collection errors too
+                backoff_delay = min(self._connection_state.get_backoff_delay(), 30)
+                await asyncio.sleep(backoff_delay)
 
     async def _update_metrics(self) -> None:
         """Update Prometheus metrics."""
@@ -248,12 +299,32 @@ class HealthMetricsService:
             1 if redis_connected else 0
         )
 
-        if self.config.control_plane_health_check_enabled:
-            control_plane_health = await self.control_plane_client.health_check()
-            cp_connected = control_plane_health.get("status") == "healthy"
-            control_plane_connection_status.labels(server_id=server_id).set(
-                1 if cp_connected else 0
-            )
+        # Only check Control Plane health at reduced frequency to avoid excessive requests
+        current_time = time.time()
+        if (self.config.control_plane_health_check_enabled and 
+            current_time - self._last_health_check_time >= self.config.control_plane_health_check_interval):
+            
+            try:
+                control_plane_health = await self.control_plane_client.health_check()
+                cp_connected = control_plane_health.get("status") == "healthy"
+                control_plane_connection_status.labels(server_id=server_id).set(
+                    1 if cp_connected else 0
+                )
+                self._last_health_check_time = current_time
+                
+                # Update connection state based on health check
+                if cp_connected:
+                    self._connection_state.mark_success()
+                else:
+                    self._connection_state.mark_failure()
+                    
+            except Exception as e:
+                self.logger.debug(
+                    "Control Plane health check failed in metrics",
+                    error=str(e),
+                )
+                self._connection_state.mark_failure()
+                control_plane_connection_status.labels(server_id=server_id).set(0)
         
         # Update queue depth metrics
         if redis_connected:

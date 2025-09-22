@@ -378,7 +378,7 @@ class TestControlPlaneClient:
             assert result["response"] == health_response
             assert result["base_url"] == mock_config.control_plane_url
             
-            mock_request.assert_called_once_with("GET", "/api/v1/health")
+            mock_request.assert_called_once_with("GET", "/health/dataplane")
 
     @pytest.mark.asyncio
     async def test_health_check_client_not_started(self, control_plane_client, mock_config) -> None:

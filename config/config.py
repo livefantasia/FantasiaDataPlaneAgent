@@ -126,6 +126,12 @@ class MonitoringConfig(BaseSettings):
     log_retention_days: int = 7
     command_poll_interval: int = 60
     command_cache_ttl: int = 86400
+    
+    # Circuit breaker configuration for Control Plane connectivity
+    control_plane_max_backoff: int = 300  # Maximum backoff delay in seconds (5 minutes)
+    control_plane_error_backoff_multiplier: float = 2.0  # Progressive backoff multiplier
+    control_plane_initial_error_delay: int = 5  # Initial delay on first error
+    control_plane_health_check_interval: int = 300  # Health check interval in metrics (5 minutes)
 
     @field_validator("log_level")
     @classmethod

@@ -18,7 +18,7 @@ from services import (
     RedisClient,
     RedisConsumerService,
 )
-from utils import configure_logging, get_logger
+from utils import configure_logging, get_logger, initialize_connection_state_manager
 
 # Global service instances
 config: ApplicationConfig
@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Configure logging
     configure_logging(config.log_level)
+    
+    # Initialize connection state manager
+    initialize_connection_state_manager(config)
     
     logger.info(
         "Starting DataPlane Agent",

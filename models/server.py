@@ -17,10 +17,10 @@ class ServerRegistration(BaseModel):
     capabilities: Dict[str, Any] = Field(
         default_factory=lambda: {
             "max_concurrent_sessions": 10,
-            "supported_products": "speech_transcription",
-            "supported_languages": "en-US",
+            "supported_products": "speech_transcription",  # Comma-separated string as per MVP spec
+            "supported_languages": "en-US",               # Comma-separated string as per MVP spec
         },
-        description="Server capabilities with simplified structure"
+        description="Server capabilities with simplified string format per MVP spec"
     )
 
 

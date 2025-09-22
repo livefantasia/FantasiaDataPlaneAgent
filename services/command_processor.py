@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from config import ApplicationConfig
 from models import CommandResult, CommandType, RemoteCommand
-from utils import create_contextual_logger
+from utils import create_contextual_logger, get_connection_state_manager
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
 
@@ -32,6 +32,9 @@ class CommandProcessor:
         
         self._running = False
         self._polling_task: Optional[asyncio.Task[None]] = None
+        
+        # Get connection state manager
+        self._connection_state = get_connection_state_manager(config)
 
     async def start(self) -> None:
         """Start command polling."""
@@ -66,12 +69,26 @@ class CommandProcessor:
         """Poll for commands from ControlPlane."""
         while self._running:
             try:
+                # Check if we should attempt the request based on circuit breaker
+                if not self._connection_state.should_attempt_request():
+                    self.logger.debug(
+                        "Skipping command polling due to circuit breaker",
+                        connection_info=self._connection_state.get_connection_info(),
+                    )
+                    # Wait for the appropriate backoff time
+                    backoff_delay = self._connection_state.get_backoff_delay()
+                    await asyncio.sleep(min(backoff_delay, self.config.command_poll_interval))
+                    continue
+                
                 correlation_id = str(uuid.uuid4())
                 
                 # Poll for commands
                 commands = await self.control_plane_client.poll_commands(
                     self.config.server_id, correlation_id
                 )
+                
+                # Mark success in connection state
+                self._connection_state.mark_success()
                 
                 # Process each command
                 for command in commands:
@@ -83,11 +100,22 @@ class CommandProcessor:
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                # Mark failure in connection state
+                self._connection_state.mark_failure()
+                
                 self.logger.error(
                     "Error in command polling",
                     error=str(e),
+                    connection_info=self._connection_state.get_connection_info(),
                 )
-                await asyncio.sleep(5)  # Short delay on error
+                
+                # Use progressive backoff instead of fixed delay
+                backoff_delay = self._connection_state.get_backoff_delay()
+                self.logger.info(
+                    "Applying backoff delay for command polling",
+                    delay_seconds=backoff_delay,
+                )
+                await asyncio.sleep(backoff_delay)
 
     async def _process_command(
         self, 

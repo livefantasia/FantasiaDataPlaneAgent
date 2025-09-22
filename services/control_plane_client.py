@@ -443,7 +443,7 @@ class ControlPlaneClient:
         return result
 
     async def health_check(self) -> Dict[str, Any]:
-        """Perform ControlPlane health check."""
+        """Perform ControlPlane health check using authenticated DataPlane endpoint."""
         try:
             if not self._client:
                 return {
@@ -452,8 +452,8 @@ class ControlPlaneClient:
                     "base_url": self.config.control_plane_url,
                 }
             
-            # Test basic connectivity
-            result = await self._make_request("GET", "/api/v1/health")
+            # Test basic connectivity using the authenticated DataPlane health endpoint
+            result = await self._make_request("GET", "/health/dataplane")
             return {
                 "status": "healthy",
                 "response": result,
