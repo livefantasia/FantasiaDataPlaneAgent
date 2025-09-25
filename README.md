@@ -49,6 +49,78 @@ The DataPlane Agent is a critical component that bridges AudioAPIServer instance
 
 Environment-based configuration using Pydantic BaseSettings:
 
+### 📝 Logging
+
+The application features comprehensive structured logging in log4j-style format with best practices:
+
+#### Features
+- **log4j-style Format**: `timestamp [level]: message {json_context}`
+- **Structured Context**: JSON context data for easy parsing and analysis
+- **System Context**: Automatic inclusion of process ID (pid) and hostname
+- **Correlation IDs**: Request tracing with automatic correlation ID injection
+- **Exception Handling**: Full stack traces with contextual error information
+- **Service-oriented Logging**: Consistent serviceName and operationName fields
+
+#### Configuration
+```bash
+# Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+LOG_LEVEL=INFO
+
+# The application uses log4j-style format by default
+# Set json_output=True in configure_logging() for pure JSON output
+```
+
+#### Usage Examples
+```python
+from utils import get_logger, log_exception, set_correlation_id
+
+# Service-oriented logging with consistent format
+logger = get_logger(__name__)
+logger.info("Operation completed: BillingService.getBillingOverview",
+           serviceName="BillingService",
+           operationName="getBillingOverview", 
+           duration=2,
+           success=True)
+
+# Error logging with full context
+try:
+    # Some operation that might fail
+    pass
+except Exception as e:
+    log_exception(logger, e, "Database operation failed: DatabaseService.executeQuery",
+                 serviceName="DatabaseService",
+                 operationName="executeQuery",
+                 queryType="SELECT")
+
+# Set correlation ID for request tracing
+correlation_id = set_correlation_id("req-123-abc")
+logger.info("Processing user request", serviceName="AuthService", userId="user123")
+```
+
+#### Sample Output
+
+log4j-style format:
+```
+2025-09-25T03:21:53.717866Z [info]: DataPlane Agent started successfully {"correlation_id":"app-startup-001","debug_mode":false,"environment":"production","hostname":"server-001","operationName":"startup","pid":1234,"region":"us-east-1","server_id":"dataplane-agent-001","serviceName":"DataPlaneAgent","version":"1.0.0"}
+
+2025-09-25T03:21:53.718147Z [warning]: Redis connection pool nearing capacity {"correlation_id":"req-456","current_connections":8,"hostname":"server-001","max_connections":10,"operationName":"monitorConnections","pid":1234,"serviceName":"RedisClient","utilization_percent":80.0}
+```
+
+Pure JSON format (when json_output=True):
+```json
+{
+  "correlation_id": "req-123-abc",
+  "event": "Operation completed: BillingService.getBillingOverview",
+  "hostname": "server-001",
+  "level": "info",
+  "operationName": "getBillingOverview",
+  "pid": 1234,
+  "serviceName": "BillingService",
+  "success": true,
+  "timestamp": "2025-09-25T03:21:53.717866Z"
+}
+```
+
 ```python
 # Key configuration sections
 redis_config: RedisConfig          # Redis connection settings

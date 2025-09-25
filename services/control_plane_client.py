@@ -21,7 +21,7 @@ from models import (
     SessionLifecycleEvent,
     QuotaRefreshRequest,
 )
-from utils import create_contextual_logger
+from utils import create_contextual_logger, log_exception
 
 
 class ControlPlaneClient:
@@ -47,15 +47,24 @@ class ControlPlaneClient:
             },
         )
         self.logger.info(
-            "ControlPlane client started",
+            "ControlPlane client started successfully",
+            serviceName="ControlPlaneClient",
+            operationName="start",
             base_url=self.config.control_plane_url,
+            timeout=self.config.control_plane_timeout,
+            success=True,
         )
 
     async def stop(self) -> None:
         """Stop the HTTP client."""
         if self._client:
             await self._client.aclose()
-            self.logger.info("ControlPlane client stopped")
+            self.logger.info(
+                "ControlPlane client stopped successfully",
+                serviceName="ControlPlaneClient",
+                operationName="stop",
+                success=True,
+            )
 
     async def _make_request(
         self,
@@ -75,6 +84,19 @@ class ControlPlaneClient:
 
         for attempt in range(self.config.control_plane_retry_attempts):
             try:
+                # Log outgoing HTTP request
+                self.logger.info(
+                    f"HTTP request initiated: {method} {endpoint}",
+                    serviceName="ControlPlaneClient",
+                    operationName="makeRequest",
+                    method=method,
+                    endpoint=endpoint,
+                    attempt=attempt + 1,
+                    correlation_id=correlation_id,
+                    has_data=data is not None,
+                    has_params=params is not None,
+                )
+                
                 response = await self._client.request(
                     method=method,
                     url=endpoint,
@@ -84,26 +106,34 @@ class ControlPlaneClient:
                 )
                 response.raise_for_status()
                 
-                self.logger.debug(
-                    "ControlPlane request successful",
+                # Log successful HTTP response
+                self.logger.info(
+                    f"HTTP request completed: {method} {endpoint}",
+                    serviceName="ControlPlaneClient",
+                    operationName="makeRequest",
                     method=method,
                     endpoint=endpoint,
                     status_code=response.status_code,
                     attempt=attempt + 1,
                     correlation_id=correlation_id,
+                    success=True,
+                    response_size=len(response.content) if hasattr(response, 'content') else 0,
                 )
                 
                 return response.json()
 
             except HTTPStatusError as e:
                 self.logger.warning(
-                    "ControlPlane request failed with HTTP error",
+                    f"HTTP request failed: {method} {endpoint}",
+                    serviceName="ControlPlaneClient",
+                    operationName="makeRequest",
                     method=method,
                     endpoint=endpoint,
                     status_code=e.response.status_code,
-                    error=str(e),
                     attempt=attempt + 1,
                     correlation_id=correlation_id,
+                    error_type="HTTPStatusError",
+                    success=False,
                 )
                 
                 # Don't retry on client errors (4xx)
@@ -115,12 +145,16 @@ class ControlPlaneClient:
 
             except RequestError as e:
                 self.logger.warning(
-                    "ControlPlane request failed with network error",
+                    f"HTTP request network error: {method} {endpoint}",
+                    serviceName="ControlPlaneClient",
+                    operationName="makeRequest",
                     method=method,
                     endpoint=endpoint,
-                    error=str(e),
+                    error_type="RequestError",
+                    error_message=str(e),
                     attempt=attempt + 1,
                     correlation_id=correlation_id,
+                    success=False,
                 )
                 
                 if attempt == self.config.control_plane_retry_attempts - 1:

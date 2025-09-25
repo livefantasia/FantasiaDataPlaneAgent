@@ -12,7 +12,7 @@ from redis.exceptions import ConnectionError, RedisError
 
 from config import ApplicationConfig
 from models import RedisMessage
-from utils import create_contextual_logger
+from utils import create_contextual_logger, log_exception
 
 
 class RedisClient:
@@ -45,17 +45,24 @@ class RedisClient:
             self._connected = True
             
             self.logger.info(
-                "Connected to Redis",
+                "Redis connection established successfully",
+                serviceName="RedisClient",
+                operationName="connect",
                 host=self.config.redis_host,
                 port=self.config.redis_port,
                 db=self.config.redis_db,
+                success=True,
             )
         except Exception as e:
-            self.logger.error(
-                "Failed to connect to Redis",
-                error=str(e),
+            log_exception(
+                self.logger,
+                e,
+                "Redis connection failed: RedisClient.connect",
+                serviceName="RedisClient",
+                operationName="connect",
                 host=self.config.redis_host,
                 port=self.config.redis_port,
+                db=self.config.redis_db,
             )
             raise
 
@@ -110,11 +117,13 @@ class RedisClient:
                     message_size=len(serialized),
                 )
         except Exception as e:
-            self.logger.error(
+            log_exception(
+                self.logger,
+                e,
                 "Failed to push message to queue",
                 queue=queue,
-                error=str(e),
                 correlation_id=correlation_id,
+                message_type=type(message).__name__,
             )
             raise
 

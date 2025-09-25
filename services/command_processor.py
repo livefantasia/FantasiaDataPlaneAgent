@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from config import ApplicationConfig
 from models import CommandResult, CommandType, RemoteCommand
-from utils import create_contextual_logger, get_connection_state_manager
+from utils import create_contextual_logger, get_connection_state_manager, log_exception
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
 

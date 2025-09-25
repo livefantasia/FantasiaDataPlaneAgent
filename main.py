@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import ApplicationConfig, load_config
+from middleware import CorrelationMiddleware
 from routers import health_router, metrics_router
 from services import (
     CommandProcessor,
@@ -18,7 +19,7 @@ from services import (
     RedisClient,
     RedisConsumerService,
 )
-from utils import configure_logging, get_logger, initialize_connection_state_manager
+from utils import configure_logging, get_logger, initialize_connection_state_manager, set_correlation_id
 
 # Global service instances
 config: ApplicationConfig
@@ -39,17 +40,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load configuration
     config = load_config()
     
-    # Configure logging
-    configure_logging(config.log_level)
+    # Configure logging with log4j-style format
+    # Use JSON output only when explicitly requested (you can add an env var for this)
+    json_output = False  # Default to log4j-style format
+    configure_logging(config.log_level, json_output=json_output, include_system_context=True)
+    
+    # Set application-wide correlation ID
+    app_correlation_id = set_correlation_id()
     
     # Initialize connection state manager
     initialize_connection_state_manager(config)
     
     logger.info(
-        "Starting DataPlane Agent",
+        "DataPlane Agent started successfully",
+        serviceName="DataPlaneAgent",
+        operationName="startup",
         version=config.app_version,
         server_id=config.server_id,
         region=config.server_region,
+        debug_mode=config.debug,
+        environment="development" if config.debug else "production",
     )
     
     try:
@@ -103,6 +113,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     
+    # Add correlation ID middleware (before CORS)
+    app.add_middleware(CorrelationMiddleware)
+    
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -149,8 +162,8 @@ async def main() -> None:
             app=app,
             host=temp_config.server_host,
             port=temp_config.server_port,
-            log_level=temp_config.log_level.lower(),
-            access_log=True,
+            log_level="warning",  # Suppress uvicorn's info logs
+            access_log=False,     # Disable uvicorn access logs (we have our own middleware)
         )
     )
     

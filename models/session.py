@@ -5,7 +5,17 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from .enums import SessionEventType
+from .enums import SessionEventType, SessionCompletionReason
+
+
+class FinalUsageSummary(BaseModel):
+    """Final usage summary matching ControlPlane expectations."""
+    
+    total_duration_seconds: float = Field(..., ge=0, description="Total connection duration")
+    total_bytes_processed: int = Field(..., ge=0, description="Total bytes processed")
+    total_audio_seconds: float = Field(..., ge=0, description="Total audio duration")
+    total_request_count: int = Field(..., ge=0, description="Total number of requests")
+    last_request_timestamp: datetime = Field(..., description="Timestamp of last request")
 
 
 class SessionLifecycleEvent(BaseModel):
@@ -17,10 +27,10 @@ class SessionLifecycleEvent(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Event timestamp"
     )
-    disconnect_reason: Optional[str] = Field(
+    disconnect_reason: Optional[SessionCompletionReason] = Field(
         default=None, description="Reason for session completion"
     )
-    final_usage_summary: Optional[Dict[str, Any]] = Field(
+    final_usage_summary: Optional[FinalUsageSummary] = Field(
         default=None, description="Final authoritative usage summary for session completion"
     )
     metadata: Optional[Dict[str, Any]] = Field(

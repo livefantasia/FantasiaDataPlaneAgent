@@ -14,8 +14,8 @@ class ProductCode(str, Enum):
 class SessionEventType(str, Enum):
     """Types of session lifecycle events."""
 
-    START = "start"
-    COMPLETE = "complete"
+    SESSION_STARTED = "session_started"
+    SESSION_COMPLETED = "session_completed"
 
 
 class CommandType(str, Enum):
@@ -24,3 +24,18 @@ class CommandType(str, Enum):
     REFRESH_PUBLIC_KEYS = "refresh_public_keys"
     HEALTH_CHECK = "health_check"
     GET_METRICS = "get_metrics"
+
+
+class SessionCompletionReason(str, Enum):
+    """Session completion reasons matching ControlPlane expectations."""
+    
+    CLIENT_CLOSE = "CLIENT_CLOSE"
+    CLIENT_ERROR = "CLIENT_ERROR"
+    STREAM_END = "STREAM_END"
+    INVALID_MESSAGE = "INVALID_MESSAGE"
+    SESSION_TIMEOUT = "SESSION_TIMEOUT"
+    OUT_OF_CREDIT = "OUT_OF_CREDIT"
+    SERVER_ERROR = "SERVER_ERROR"
+    SERVER_SHUTDOWN = "SERVER_SHUTDOWN"
+    UNKNOWN = "UNKNOWN"
+    STALE = "STALE"
