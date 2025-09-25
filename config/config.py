@@ -54,51 +54,77 @@ class ServerConfig(BaseSettings):
     """Server configuration settings."""
 
     # Application metadata
-    app_name: str = "DataPlane Agent"
-    app_version: str = "1.0.0"
-    debug: bool = False
+    app_name: str = Field(alias="APP_NAME")
+    app_version: str = Field(alias="APP_VERSION")
+    debug: bool = Field(alias="DEBUG")
 
     # Server configuration
-    server_id: str = Field(default="", alias="SERVER_ID")
-    server_region: str = Field(default="", alias="SERVER_REGION")
-    server_port: int = Field(default=8081, alias="SERVER_PORT")
-    server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
-    server_ip: str = Field(default="0.0.0.0", alias="SERVER_IP")
+    server_id: str = Field(alias="SERVER_ID")
+    server_region: str = Field(alias="SERVER_REGION")
+    server_port: int = Field(alias="SERVER_PORT")
+    server_host: str = Field(alias="SERVER_HOST")
+    server_ip: str = Field(alias="SERVER_IP")
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def validate_debug(cls, v) -> bool:
+        """Convert string boolean values to actual boolean."""
+        return str_to_bool(v)
+
+    @field_validator("server_id")
+    @classmethod
+    def validate_server_id(cls, v: str) -> str:
+        """Ensure server_id is provided."""
+        if not v or not v.strip():
+            raise ValueError("server_id is required and cannot be empty")
+        return v.strip()
+
+    @field_validator("server_region")
+    @classmethod
+    def validate_server_region(cls, v: str) -> str:
+        """Ensure server_region is provided."""
+        if not v or not v.strip():
+            raise ValueError("server_region is required and cannot be empty")
+        return v.strip()
 
 
 class RedisConfig(BaseSettings):
     """Redis configuration settings."""
 
     # Redis configuration
-    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
-    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_host: str = Field(alias="REDIS_HOST")
+    redis_port: int = Field(alias="REDIS_PORT")
     redis_password: Optional[str] = Field(default=None, alias="REDIS_PASSWORD")
-    redis_db: int = Field(default=0, alias="REDIS_DB")
-    redis_socket_timeout: int = 30
-    redis_retry_on_timeout: bool = True
-    redis_max_connections: int = 10
+    redis_db: int = Field(alias="REDIS_DB")
+    redis_socket_timeout: int = Field(alias="REDIS_SOCKET_TIMEOUT")
+    redis_retry_on_timeout: bool = Field(alias="REDIS_RETRY_ON_TIMEOUT")
+    redis_max_connections: int = Field(alias="REDIS_MAX_CONNECTIONS")
 
     # Queue names
-    usage_records_queue: str = "queue:usage_records"
-    session_lifecycle_queue: str = "queue:session_lifecycle"
-    quota_refresh_queue: str = "queue:quota_refresh"
-    quota_response_queue: str = "queue:quota_response"
-    dead_letter_queue: str = "queue:dead_letter"
+    usage_records_queue: str = Field(alias="USAGE_RECORDS_QUEUE")
+    session_lifecycle_queue: str = Field(alias="SESSION_LIFECYCLE_QUEUE")
+    quota_refresh_queue: str = Field(alias="QUOTA_REFRESH_QUEUE")
+    quota_response_queue: str = Field(alias="QUOTA_RESPONSE_QUEUE")
+    dead_letter_queue: str = Field(alias="DEAD_LETTER_QUEUE")
+
+    @field_validator("redis_retry_on_timeout", mode="before")
+    @classmethod
+    def validate_redis_retry_on_timeout(cls, v) -> bool:
+        """Convert string boolean values to actual boolean."""
+        return str_to_bool(v)
 
 
 class ControlPlaneConfig(BaseSettings):
     """ControlPlane configuration settings."""
 
     # ControlPlane configuration
-    control_plane_url: str = Field(default="", alias="CONTROL_PLANE_URL")
-    control_plane_api_key: str = Field(default="", alias="CONTROL_PLANE_API_KEY")
-    control_plane_health_check_enabled: bool = Field(
-        default=True, alias="CONTROL_PLANE_HEALTH_CHECK_ENABLED"
-    )
-    control_plane_timeout: int = 30
-    control_plane_retry_attempts: int = 3
-    control_plane_retry_backoff_factor: float = 2.0
-    jwt_public_keys_cache_ttl: int = 3600
+    control_plane_url: str = Field(alias="CONTROL_PLANE_URL")
+    control_plane_api_key: str = Field(alias="CONTROL_PLANE_API_KEY")
+    control_plane_health_check_enabled: bool = Field(alias="CONTROL_PLANE_HEALTH_CHECK_ENABLED")
+    control_plane_timeout: int = Field(alias="CONTROL_PLANE_TIMEOUT")
+    control_plane_retry_attempts: int = Field(alias="CONTROL_PLANE_RETRY_ATTEMPTS")
+    control_plane_retry_backoff_factor: float = Field(alias="CONTROL_PLANE_RETRY_BACKOFF_FACTOR")
+    jwt_public_keys_cache_ttl: int = Field(alias="JWT_PUBLIC_KEYS_CACHE_TTL")
 
     @field_validator("control_plane_health_check_enabled", mode="before")
     @classmethod
@@ -110,28 +136,38 @@ class ControlPlaneConfig(BaseSettings):
     @classmethod
     def validate_control_plane_url(cls, v: str) -> str:
         """Ensure ControlPlane URL is properly formatted."""
+        if not v or not v.strip():
+            raise ValueError("control_plane_url is required and cannot be empty")
         if not v.startswith(("http://", "https://")):
             raise ValueError("control_plane_url must start with http:// or https://")
         return v.rstrip("/")
+
+    @field_validator("control_plane_api_key")
+    @classmethod
+    def validate_control_plane_api_key(cls, v: str) -> str:
+        """Ensure ControlPlane API key is provided."""
+        if not v or not v.strip():
+            raise ValueError("control_plane_api_key is required and cannot be empty")
+        return v.strip()
 
 
 class MonitoringConfig(BaseSettings):
     """Monitoring configuration settings."""
 
     # Monitoring configuration
-    heartbeat_interval: int = 60
-    metrics_port: int = 9090
-    health_check_port: int = 8081
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    log_retention_days: int = 7
-    command_poll_interval: int = 60
-    command_cache_ttl: int = 86400
+    heartbeat_interval: int = Field(alias="HEARTBEAT_INTERVAL")
+    metrics_port: int = Field(alias="METRICS_PORT")
+    health_check_port: int = Field(alias="HEALTH_CHECK_PORT")
+    log_level: str = Field(alias="LOG_LEVEL")
+    log_retention_days: int = Field(alias="LOG_RETENTION_DAYS")
+    command_poll_interval: int = Field(alias="COMMAND_POLL_INTERVAL")
+    command_cache_ttl: int = Field(alias="COMMAND_CACHE_TTL")
     
     # Circuit breaker configuration for Control Plane connectivity
-    control_plane_max_backoff: int = 300  # Maximum backoff delay in seconds (5 minutes)
-    control_plane_error_backoff_multiplier: float = 2.0  # Progressive backoff multiplier
-    control_plane_initial_error_delay: int = 5  # Initial delay on first error
-    control_plane_health_check_interval: int = 300  # Health check interval in metrics (5 minutes)
+    control_plane_max_backoff: int = Field(alias="CONTROL_PLANE_MAX_BACKOFF")  # Maximum backoff delay in seconds (5 minutes)
+    control_plane_error_backoff_multiplier: float = Field(alias="CONTROL_PLANE_ERROR_BACKOFF_MULTIPLIER")  # Progressive backoff multiplier
+    control_plane_initial_error_delay: int = Field(alias="CONTROL_PLANE_INITIAL_ERROR_DELAY")  # Initial delay on first error
+    control_plane_health_check_interval: int = Field(alias="CONTROL_PLANE_HEALTH_CHECK_INTERVAL")  # Health check interval in metrics (5 minutes)
 
     @field_validator("log_level")
     @classmethod
@@ -147,10 +183,30 @@ class SecurityConfig(BaseSettings):
     """Security configuration settings."""
 
     # Security configuration
-    enable_tls: bool = True
-    jwt_algorithm: str = "RS256"
-    api_key_header: str = "X-API-Key"
-    trusted_ips: List[str] = Field(default_factory=list)
+    enable_tls: bool = Field(alias="ENABLE_TLS")
+    jwt_algorithm: str = Field(alias="JWT_ALGORITHM")
+    api_key_header: str = Field(alias="API_KEY_HEADER")
+    trusted_ips: Optional[str] = Field(default="", alias="TRUSTED_IPS")
+
+    @field_validator("enable_tls", mode="before")
+    @classmethod
+    def validate_enable_tls(cls, v) -> bool:
+        """Convert string boolean values to actual boolean."""
+        return str_to_bool(v)
+
+    @field_validator("trusted_ips", mode="after")
+    @classmethod
+    def validate_trusted_ips(cls, v: str) -> List[str]:
+        """Parse comma-separated trusted IPs from environment variable."""
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            if not v.strip():
+                return []
+            return [ip.strip() for ip in v.split(",") if ip.strip()]
+        if isinstance(v, list):
+            return v
+        return []
 
 
 class ApplicationConfig(

@@ -37,8 +37,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan management."""
     global config, redis_client, control_plane_client, redis_consumer, command_processor, health_metrics
     
-    # Load configuration
-    config = load_config()
+    try:
+        # Load configuration - this will fail with detailed error if required vars are missing
+        config = load_config()
+        logger.info("Configuration loaded successfully", server_id=config.server_id)
+    except Exception as e:
+        print(f"\n{'='*80}")
+        print("CONFIGURATION ERROR: Failed to load application configuration")
+        print(f"{'='*80}")
+        print(f"Error: {e}")
+        print("\nPlease ensure all required environment variables are set in your .env file.")
+        print("Check .env.example for a complete list of required variables.")
+        print(f"{'='*80}\n")
+        sys.exit(1)
     
     # Configure logging with log4j-style format
     # Use JSON output only when explicitly requested (you can add an env var for this)
@@ -151,23 +162,34 @@ async def main() -> None:
     """Main entry point for standalone execution."""
     import uvicorn
     
-    setup_signal_handlers()
-    
-    # Load config for server settings
-    temp_config = load_config()
-    
-    # Run the server
-    server = uvicorn.Server(
-        uvicorn.Config(
-            app=app,
-            host=temp_config.server_host,
-            port=temp_config.server_port,
-            log_level="warning",  # Suppress uvicorn's info logs
-            access_log=False,     # Disable uvicorn access logs (we have our own middleware)
+    try:
+        setup_signal_handlers()
+        
+        # Load config for server settings - this will fail if required vars are missing
+        temp_config = load_config()
+        
+        # Run the server
+        server = uvicorn.Server(
+            uvicorn.Config(
+                app=app,
+                host=temp_config.server_host,
+                port=temp_config.server_port,
+                log_level="warning",  # Suppress uvicorn's info logs
+                access_log=False,     # Disable uvicorn access logs (we have our own middleware)
+            )
         )
-    )
-    
-    await server.serve()
+        
+        await server.serve()
+        
+    except Exception as e:
+        print(f"\n{'='*80}")
+        print("APPLICATION STARTUP ERROR")
+        print(f"{'='*80}")
+        print(f"Error: {e}")
+        print("\nPlease check your configuration and ensure all required environment variables are set.")
+        print("See .env.example for a complete list of required variables.")
+        print(f"{'='*80}\n")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
