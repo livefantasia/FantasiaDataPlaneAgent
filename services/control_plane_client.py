@@ -173,9 +173,11 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submit a single usage record to ControlPlane for a specific session."""
-        # Convert EnrichedUsageRecord to the format expected by ControlPlane
+        # Convert EnrichedUsageRecord to the format expected by ControlPlane API
+        # Updated payload format to match API_Session_Management.md specification
         data = {
             "transaction_id": usage_record.transaction_id,
+            "customer_id": usage_record.customer_id,
             "product_code": usage_record.product_code,
             "server_instance_id": usage_record.server_instance_id,
             "api_server_region": usage_record.api_server_region,
@@ -187,6 +189,7 @@ class ControlPlaneClient:
             "request_count": usage_record.request_count,
             "request_timestamp": usage_record.request_timestamp.isoformat(),
             "response_timestamp": usage_record.response_timestamp.isoformat(),
+            # Note: credits_consumed is calculated server-side, not provided by client
         }
         
         result = await self._make_request(
@@ -242,10 +245,12 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Notify ControlPlane of session start."""
-        # Convert to snake_case format expected by ControlPlane
+        # Updated payload format to match API_Session_Management.md specification
         data = {
             "started_at": session_event.timestamp.isoformat(),
-            "client_info": session_event.metadata or {},
+            "server_instance_id": self.config.server_id,
+            "api_server_region": self.config.server_region,
+            "agent_version": self.config.app_version,
             "timestamp": session_event.timestamp.isoformat(),
         }
         
@@ -271,9 +276,10 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Request additional quota for active session."""
-        # Transform QuotaRefreshRequest to SessionRefreshRequest format for ControlPlane
+        # Updated payload format to match API_Session_Management.md specification
         session_refresh_data = {
             "transaction_id": quota_request.transaction_id,
+            "customer_id": quota_request.customer_id,
             "product_code": quota_request.product_code.value,
             "timestamp": quota_request.timestamp.isoformat() if hasattr(quota_request.timestamp, 'isoformat') else str(quota_request.timestamp)
         }
@@ -299,11 +305,14 @@ class ControlPlaneClient:
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Notify ControlPlane of session completion."""
-        # Convert to snake_case format expected by ControlPlane
+        # Updated payload format to match API_Session_Management.md specification
         data = {
-            "completed_at": session_event.timestamp.isoformat(),
             "disconnect_reason": session_event.disconnect_reason,
+            "completed_at": session_event.timestamp.isoformat(),
             "final_usage_summary": session_event.final_usage_summary or {},
+            "server_instance_id": self.config.server_id,
+            "api_server_region": self.config.server_region,
+            "agent_version": self.config.app_version,
             "timestamp": session_event.timestamp.isoformat(),
         }
         

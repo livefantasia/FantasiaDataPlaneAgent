@@ -260,17 +260,30 @@ class RedisConsumerService:
             agent_version=self.config.app_version,
         )
         
-        # Submit to ControlPlane
-        await self.control_plane_client.submit_usage_records(
+        # Submit to ControlPlane and check if successful
+        result = await self.control_plane_client.submit_usage_records(
             [enriched_record], correlation_id
         )
         
-        self.logger.info(
-            "Usage record processed successfully",
-            session_id=usage_record.api_session_id,
-            customer_id=usage_record.customer_id,
-            correlation_id=correlation_id,
-        )
+        # Only log success if the submission was actually successful
+        if result.get("submitted_count", 0) > 0:
+            self.logger.info(
+                "Usage record processed successfully",
+                session_id=usage_record.api_session_id,
+                customer_id=usage_record.customer_id,
+                correlation_id=correlation_id,
+            )
+        else:
+            self.logger.error(
+                "Usage record processing failed - submission to ControlPlane unsuccessful",
+                session_id=usage_record.api_session_id,
+                customer_id=usage_record.customer_id,
+                submitted_count=result.get("submitted_count", 0),
+                total_count=result.get("total_count", 1),
+                correlation_id=correlation_id,
+            )
+            # Re-raise the exception to ensure the message is requeued or moved to DLQ
+            raise RuntimeError(f"Failed to submit usage record for session {usage_record.api_session_id}")
 
     async def _process_session_lifecycle_event(
         self, 
@@ -280,21 +293,32 @@ class RedisConsumerService:
         """Process a session lifecycle event."""
         event = SessionLifecycleEvent(**message_data)
         
-        if event.event_type == "start":
-            await self.control_plane_client.notify_session_start(
-                event, correlation_id
+        try:
+            if event.event_type == "start":
+                await self.control_plane_client.notify_session_start(
+                    event, correlation_id
+                )
+            elif event.event_type == "complete":
+                await self.control_plane_client.notify_session_complete(
+                    event, correlation_id
+                )
+            
+            self.logger.info(
+                "Session lifecycle event processed successfully",
+                session_id=event.api_session_id,
+                event_type=event.event_type,
+                correlation_id=correlation_id,
             )
-        elif event.event_type == "complete":
-            await self.control_plane_client.notify_session_complete(
-                event, correlation_id
+        except Exception as e:
+            self.logger.error(
+                "Session lifecycle event processing failed",
+                session_id=event.api_session_id,
+                event_type=event.event_type,
+                error=str(e),
+                correlation_id=correlation_id,
             )
-        
-        self.logger.info(
-            "Session lifecycle event processed",
-            session_id=event.api_session_id,
-            event_type=event.event_type,
-            correlation_id=correlation_id,
-        )
+            # Re-raise the exception to ensure the message is requeued or moved to DLQ
+            raise
 
     async def _process_quota_refresh_request(
         self, 
@@ -308,44 +332,56 @@ class RedisConsumerService:
 
         quota_request = QuotaRefreshRequest(**message_data)
         
-        # Submit quota refresh request to ControlPlane and get response
-        response_data = await self.control_plane_client.request_quota_refresh(
-            quota_request, correlation_id
-        )
+        try:
+            # Submit quota refresh request to ControlPlane and get response
+            response_data = await self.control_plane_client.request_quota_refresh(
+                quota_request, correlation_id
+            )
+            
+            self.logger.info(
+                "Quota refresh request processed successfully",
+                session_id=quota_request.api_session_id,
+                customer_id=quota_request.customer_id,
+                correlation_id=correlation_id,
+            )
+            
+            # If we received a response, forward it back to the AudioAPIServer
+            if response_data:
+                try:
+                    quota_response = QuotaRefreshResponse(**response_data)
+                    
+                    # Send response back to AudioAPIServer via quota_response_queue
+                    await self.redis_client.push_message(
+                        self.config.quota_response_queue,
+                        quota_response.model_dump()
+                    )
+                    
+                    self.logger.info(
+                        "Quota refresh response forwarded to AudioAPIServer",
+                        session_id=quota_response.api_session_id,
+                        new_quota_amount=quota_response.new_quota_amount,
+                        final_quota=quota_response.final_quota,
+                        correlation_id=correlation_id,
+                    )
+                    
+                except Exception as e:
+                    self.logger.error(
+                        "Failed to process quota refresh response",
+                        error=str(e),
+                        response_data=response_data,
+                        correlation_id=correlation_id,
+                    )
         
-        self.logger.info(
-            "Quota refresh request processed",
-            session_id=quota_request.api_session_id,
-            customer_id=quota_request.customer_id,
-            correlation_id=correlation_id,
-        )
-        
-        # If we received a response, forward it back to the AudioAPIServer
-        if response_data:
-            try:
-                quota_response = QuotaRefreshResponse(**response_data)
-                
-                # Send response back to AudioAPIServer via quota_response_queue
-                await self.redis_client.push_message(
-                    self.config.quota_response_queue,
-                    quota_response.model_dump()
-                )
-                
-                self.logger.info(
-                    "Quota refresh response forwarded to AudioAPIServer",
-                    session_id=quota_response.api_session_id,
-                    new_quota_amount=quota_response.new_quota_amount,
-                    final_quota=quota_response.final_quota,
-                    correlation_id=correlation_id,
-                )
-                
-            except Exception as e:
-                self.logger.error(
-                    "Failed to process quota refresh response",
-                    error=str(e),
-                    response_data=response_data,
-                    correlation_id=correlation_id,
-                )
+        except Exception as e:
+            self.logger.error(
+                "Quota refresh request processing failed",
+                session_id=quota_request.api_session_id,
+                customer_id=quota_request.customer_id,
+                error=str(e),
+                correlation_id=correlation_id,
+            )
+            # Re-raise the exception to ensure the message is requeued or moved to DLQ
+            raise
 
     async def get_consumer_stats(self) -> Dict[str, Any]:
         """Get consumer statistics."""
