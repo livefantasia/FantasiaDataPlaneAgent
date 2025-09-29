@@ -193,4 +193,12 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    temp_config = load_config()
+    uvicorn.run(
+        "main:app",
+        host=temp_config.server_host,
+        port=temp_config.server_port,
+        log_level="warning",
+        access_log=False,
+    )
