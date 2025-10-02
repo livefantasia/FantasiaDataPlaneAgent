@@ -88,5 +88,4 @@ models/*.pth
 *.code-workspace
 .venv/
 keys/
-*.txt
 .mypy_cache/

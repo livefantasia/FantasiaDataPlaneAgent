@@ -8,8 +8,8 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import httpx
-from httpx import AsyncClient, HTTPStatusError, RequestError
+import requests
+from requests.adapters import HTTPAdapter
 
 from config import ApplicationConfig
 from models import (
@@ -21,7 +21,7 @@ from models import (
     SessionLifecycleEvent,
     QuotaRefreshRequest,
 )
-from utils import create_contextual_logger, log_exception
+from utils import create_contextual_logger, get_connection_state_manager, log_exception
 
 
 class ControlPlaneClient:
@@ -31,40 +31,44 @@ class ControlPlaneClient:
         """Initialize ControlPlane client."""
         self.config = config
         self.logger = create_contextual_logger(__name__, service="control_plane_client")
-        self._client: Optional[AsyncClient] = None
         self._jwt_keys_cache: Optional[Dict[str, Any]] = None
         self._jwt_keys_cached_at: Optional[datetime] = None
+        self.connection_state = get_connection_state_manager()
 
     async def start(self) -> None:
-        """Start the HTTP client."""
-        self._client = AsyncClient(
-            base_url=self.config.control_plane_url,
-            timeout=httpx.Timeout(self.config.control_plane_timeout),
-            headers={
-                "User-Agent": f"DataPlane-Agent/{self.config.app_version}",
-                "Content-Type": "application/json",
-                self.config.api_key_header: self.config.control_plane_api_key,
-            },
-        )
-        self.logger.info(
-            "ControlPlane client started successfully",
-            serviceName="ControlPlaneClient",
-            operationName="start",
-            base_url=self.config.control_plane_url,
-            timeout=self.config.control_plane_timeout,
-            success=True,
-        )
+        """Configure the ControlPlane client."""
+        self.logger.info("ControlPlane client configured to use 'requests' library.")
 
     async def stop(self) -> None:
-        """Stop the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self.logger.info(
-                "ControlPlane client stopped successfully",
-                serviceName="ControlPlaneClient",
-                operationName="stop",
-                success=True,
+        """Stop the ControlPlane client."""
+        self.logger.info("ControlPlane client stopped")
+
+    def _execute_sync_request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict[str, Any]],
+        params: Optional[Dict[str, Any]],
+        headers: Dict[str, str],
+    ) -> requests.Response:
+        """Execute a synchronous HTTP request using the 'requests' library with retries disabled."""
+        full_url = self.config.control_plane_url + endpoint
+        
+        with requests.Session() as session:
+            adapter = HTTPAdapter(max_retries=0)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            
+            session.headers.update(headers)
+            response = session.request(
+                method=method.upper(),
+                url=full_url,
+                json=data,
+                params=params,
+                timeout=self.config.control_plane_timeout,
             )
+            response.raise_for_status()
+            return response
 
     async def _make_request(
         self,
@@ -74,98 +78,65 @@ class ControlPlaneClient:
         params: Optional[Dict[str, Any]] = None,
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Make HTTP request with retry logic."""
-        if not self._client:
-            raise RuntimeError("ControlPlane client not started")
+        """Make HTTP request with circuit breaker and retry logic, using 'requests' in a thread."""
+        if not await self.connection_state.should_attempt_request():
+            self.logger.warning("Request blocked by circuit breaker", method=method, endpoint=endpoint)
+            raise RuntimeError("Circuit breaker is open. Request blocked.")
 
-        headers = {}
+        request_headers = {
+            "User-Agent": f"DataPlane-Agent/{self.config.app_version}",
+            "Content-Type": "application/json",
+            self.config.api_key_header: self.config.control_plane_api_key,
+        }
         if correlation_id:
-            headers["X-Correlation-ID"] = correlation_id
+            request_headers["X-Correlation-ID"] = correlation_id
+
+        loop = asyncio.get_running_loop()
 
         for attempt in range(self.config.control_plane_retry_attempts):
             try:
-                # Log outgoing HTTP request
-                self.logger.info(
-                    f"HTTP request initiated: {method} {endpoint}",
-                    serviceName="ControlPlaneClient",
-                    operationName="makeRequest",
-                    method=method,
-                    endpoint=endpoint,
-                    attempt=attempt + 1,
-                    correlation_id=correlation_id,
-                    has_data=data is not None,
-                    has_params=params is not None,
+                self.logger.info(f"HTTP request initiated: {method} {endpoint}", attempt=attempt + 1)
+                
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,  # Use the default ThreadPoolExecutor
+                        self._execute_sync_request,
+                        method,
+                        endpoint,
+                        data,
+                        params,
+                        request_headers,
+                    ),
+                    timeout=self.config.control_plane_timeout + 5,
                 )
                 
-                response = await self._client.request(
-                    method=method,
-                    url=endpoint,
-                    json=data,
-                    params=params,
-                    headers=headers,
-                )
-                response.raise_for_status()
-                
-                # Log successful HTTP response
-                self.logger.info(
-                    f"HTTP request completed: {method} {endpoint}",
-                    serviceName="ControlPlaneClient",
-                    operationName="makeRequest",
-                    method=method,
-                    endpoint=endpoint,
-                    status_code=response.status_code,
-                    attempt=attempt + 1,
-                    correlation_id=correlation_id,
-                    success=True,
-                    response_size=len(response.content) if hasattr(response, 'content') else 0,
-                )
-                
-                return response.json()
+                response_json = response.json()
+                await self.connection_state.mark_success()
+                self.logger.info(f"HTTP request completed: {method} {endpoint}", status_code=response.status_code, attempt=attempt + 1)
+                return response_json
 
-            except HTTPStatusError as e:
-                self.logger.warning(
-                    f"HTTP request failed: {method} {endpoint}",
-                    serviceName="ControlPlaneClient",
-                    operationName="makeRequest",
-                    method=method,
-                    endpoint=endpoint,
-                    status_code=e.response.status_code,
-                    attempt=attempt + 1,
-                    correlation_id=correlation_id,
-                    error_type="HTTPStatusError",
-                    success=False,
-                )
-                
-                # Don't retry on client errors (4xx)
-                if 400 <= e.response.status_code < 500:
+            except asyncio.TimeoutError:
+                self.logger.warning("Request timed out in executor thread", attempt=attempt + 1)
+                await self.connection_state.mark_failure()
+
+            except requests.exceptions.RequestException as e:
+                if e.response is not None and 400 <= e.response.status_code < 500:
+                    self.logger.warning(f"HTTP client error", status_code=e.response.status_code, attempt=attempt + 1)
                     raise
                 
-                if attempt == self.config.control_plane_retry_attempts - 1:
-                    raise
+                await self.connection_state.mark_failure()
+                self.logger.warning(f"HTTP request failed in executor thread", error=str(e), attempt=attempt + 1)
 
-            except RequestError as e:
-                self.logger.warning(
-                    f"HTTP request network error: {method} {endpoint}",
-                    serviceName="ControlPlaneClient",
-                    operationName="makeRequest",
-                    method=method,
-                    endpoint=endpoint,
-                    error_type="RequestError",
-                    error_message=str(e),
-                    attempt=attempt + 1,
-                    correlation_id=correlation_id,
-                    success=False,
-                )
-                
-                if attempt == self.config.control_plane_retry_attempts - 1:
-                    raise
-
-            # Exponential backoff
             if attempt < self.config.control_plane_retry_attempts - 1:
-                delay = (self.config.control_plane_retry_backoff_factor ** attempt)
+                if not await self.connection_state.should_attempt_request():
+                    self.logger.warning("Circuit breaker opened, aborting retries")
+                    break
+                
+                delay = await self.connection_state.get_backoff_delay()
+                self.logger.info(f"Retrying request after {delay:.2f} seconds", attempt=attempt + 1)
                 await asyncio.sleep(delay)
 
-        raise RuntimeError("All retry attempts failed")
+        raise RuntimeError("All retry attempts failed or circuit breaker is open")
 
     async def submit_usage_record(
         self,

@@ -143,15 +143,7 @@ def create_app() -> FastAPI:
     return app
 
 
-def setup_signal_handlers() -> None:
-    """Setup signal handlers for graceful shutdown."""
-    def signal_handler(signum: int, frame: Any) -> None:
-        logger.info(f"Received signal {signum}, initiating shutdown")
-        # FastAPI will handle the shutdown through lifespan context manager
-        sys.exit(0)
-    
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+
 
 
 # Create the FastAPI app
@@ -163,7 +155,6 @@ async def main() -> None:
     import uvicorn
     
     try:
-        setup_signal_handlers()
         
         # Load config for server settings - this will fail if required vars are missing
         temp_config = load_config()
@@ -193,12 +184,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    import uvicorn
-    temp_config = load_config()
-    uvicorn.run(
-        "main:app",
-        host=temp_config.server_host,
-        port=temp_config.server_port,
-        log_level="warning",
-        access_log=False,
-    )
+    # Use asyncio.run for proper signal handling when running directly
+    asyncio.run(main())

@@ -4,9 +4,11 @@ This module provides a shared state manager to track Control Plane connectivity
 across all services and implement circuit breaker patterns.
 """
 
+import asyncio
 import time
+import logging
 from typing import Optional
-from threading import Lock
+from asyncio import Lock
 
 
 class ConnectionStateManager:
@@ -16,6 +18,7 @@ class ConnectionStateManager:
         """Initialize connection state manager."""
         self.config = config
         self._lock = Lock()
+        self.logger = logging.getLogger(__name__)
         
         # Connection state tracking
         self._is_connected = True
@@ -27,72 +30,107 @@ class ConnectionStateManager:
         self._circuit_open = False
         self._circuit_open_time: Optional[float] = None
     
-    def mark_success(self) -> None:
+    async def mark_success(self) -> None:
         """Mark a successful Control Plane operation."""
-        with self._lock:
+        async with self._lock:
+            was_circuit_open = self._circuit_open
+            consecutive_failures_before = self._consecutive_failures
+            
             self._is_connected = True
             self._consecutive_failures = 0
             self._last_success_time = time.time()
             self._circuit_open = False
             self._circuit_open_time = None
+            
+            if was_circuit_open:
+                self.logger.info(
+                    "Circuit breaker CLOSED - Connection recovered",
+                    previous_failures=consecutive_failures_before,
+                    downtime_seconds=int(time.time() - (self._last_failure_time or 0)),
+                )
+            elif consecutive_failures_before > 0:
+                self.logger.info(
+                    "Connection stabilized after failures",
+                    recovered_from_failures=consecutive_failures_before,
+                )
     
-    def mark_failure(self) -> None:
+    async def mark_failure(self) -> None:
         """Mark a failed Control Plane operation."""
-        with self._lock:
+        async with self._lock:
             self._is_connected = False
             self._consecutive_failures += 1
             self._last_failure_time = time.time()
             
-            # Open circuit if too many consecutive failures
             if self._consecutive_failures >= 3:
+                was_already_open = self._circuit_open
                 self._circuit_open = True
                 self._circuit_open_time = time.time()
+                
+                if not was_already_open:
+                    next_backoff = await self.get_backoff_delay()
+                    self.logger.warning(
+                        "Circuit breaker OPENED - Too many consecutive failures",
+                        consecutive_failures=self._consecutive_failures,
+                        next_retry_delay_seconds=next_backoff,
+                    )
+            else:
+                self.logger.debug(
+                    "Connection failure recorded",
+                    consecutive_failures=self._consecutive_failures,
+                    failures_until_circuit_open=3 - self._consecutive_failures,
+                )
     
-    def get_backoff_delay(self) -> float:
+    async def get_backoff_delay(self) -> float:
         """Calculate the appropriate backoff delay based on failure history."""
-        with self._lock:
+        async with self._lock:
             if self._consecutive_failures == 0:
                 return 0.0
             
-            # Calculate progressive backoff
             delay = self.config.control_plane_initial_error_delay * (
                 self.config.control_plane_error_backoff_multiplier ** (self._consecutive_failures - 1)
             )
             
-            # Cap at maximum backoff
             return min(delay, self.config.control_plane_max_backoff)
     
-    def should_attempt_request(self) -> bool:
+    async def should_attempt_request(self) -> bool:
         """Determine if a request should be attempted based on circuit breaker state."""
-        with self._lock:
+        async with self._lock:
             if not self._circuit_open:
                 return True
             
-            # Check if circuit should be half-open (allow test requests)
             if self._circuit_open_time and self._last_failure_time:
                 time_since_open = time.time() - self._circuit_open_time
-                # Allow test request after backoff delay
-                backoff_delay = self.get_backoff_delay()
+                backoff_delay = await self.get_backoff_delay()
                 if time_since_open >= backoff_delay:
+                    self.logger.info(
+                        "Circuit breaker entering HALF-OPEN state - Allowing test request",
+                        time_since_open_seconds=int(time_since_open),
+                        backoff_delay_seconds=backoff_delay,
+                    )
                     return True
+                else:
+                    self.logger.debug(
+                        "Circuit breaker still OPEN - Request blocked",
+                        remaining_wait_seconds=int(backoff_delay - time_since_open),
+                    )
             
             return False
     
-    def get_connection_info(self) -> dict:
+    async def get_connection_info(self) -> dict:
         """Get current connection state information."""
-        with self._lock:
+        async with self._lock:
             return {
                 "is_connected": self._is_connected,
                 "consecutive_failures": self._consecutive_failures,
                 "circuit_open": self._circuit_open,
                 "last_success_time": self._last_success_time,
                 "last_failure_time": self._last_failure_time,
-                "current_backoff_delay": self.get_backoff_delay(),
+                "current_backoff_delay": await self.get_backoff_delay(),
             }
     
-    def is_healthy(self) -> bool:
+    async def is_healthy(self) -> bool:
         """Check if the connection is considered healthy."""
-        with self._lock:
+        async with self._lock:
             return self._is_connected and not self._circuit_open
 
 

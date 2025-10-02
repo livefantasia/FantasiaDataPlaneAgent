@@ -69,53 +69,49 @@ class CommandProcessor:
         """Poll for commands from ControlPlane."""
         while self._running:
             try:
-                # Check if we should attempt the request based on circuit breaker
-                if not self._connection_state.should_attempt_request():
-                    self.logger.debug(
-                        "Skipping command polling due to circuit breaker",
-                        connection_info=self._connection_state.get_connection_info(),
+                if not await self._connection_state.should_attempt_request():
+                    self.logger.info(
+                        "Circuit breaker is open, skipping command poll",
+                        connection_info=await self._connection_state.get_connection_info(),
                     )
-                    # Wait for the appropriate backoff time
-                    backoff_delay = self._connection_state.get_backoff_delay()
-                    await asyncio.sleep(min(backoff_delay, self.config.command_poll_interval))
+                    await asyncio.sleep(self.config.command_poll_interval)
                     continue
-                
+
                 correlation_id = str(uuid.uuid4())
-                
-                # Poll for commands
                 commands = await self.control_plane_client.poll_commands(
                     self.config.server_id, correlation_id
                 )
                 
-                # Mark success in connection state
-                self._connection_state.mark_success()
+                await self._connection_state.mark_success()
                 
-                # Process each command
                 for command in commands:
                     await self._process_command(command, correlation_id)
                 
-                # Wait before next poll
                 await asyncio.sleep(self.config.command_poll_interval)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                # Mark failure in connection state
-                self._connection_state.mark_failure()
-                
-                self.logger.error(
-                    "Error in command polling",
-                    error=str(e),
-                    connection_info=self._connection_state.get_connection_info(),
-                )
-                
-                # Use progressive backoff instead of fixed delay
-                backoff_delay = self._connection_state.get_backoff_delay()
-                self.logger.info(
-                    "Applying backoff delay for command polling",
-                    delay_seconds=backoff_delay,
-                )
+                await self._connection_state.mark_failure()
+                self.logger.error("Error in command polling", error=str(e))
+                backoff_delay = await self._connection_state.get_backoff_delay()
                 await asyncio.sleep(backoff_delay)
+
+    async def _attempt_connection_recovery(self) -> None:
+        """Attempt to recover connection to ControlPlane."""
+        try:
+            self.logger.info("Attempting ControlPlane connection recovery")
+            health_result = await self.control_plane_client.health_check()
+            
+            if health_result.get("status") == "healthy":
+                self.logger.info("ControlPlane connection recovered")
+                await self._connection_state.mark_success()
+            else:
+                await self._connection_state.mark_failure()
+                
+        except Exception as e:
+            self.logger.debug("Connection recovery attempt failed", error=str(e))
+            await self._connection_state.mark_failure()
 
     async def _process_command(
         self, 

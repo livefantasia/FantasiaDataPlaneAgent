@@ -4,6 +4,7 @@ This service provides health monitoring and metrics collection.
 """
 
 import asyncio
+import asyncio
 import time
 import uuid
 from datetime import datetime
@@ -94,20 +95,19 @@ class HealthMetricsService:
         self._last_health_check_time = 0.0
 
     async def start(self) -> None:
-        """Start health monitoring and metrics collection."""
+        """Start health monitoring and metrics collection in the background."""
         if self._running:
             return
 
         self._running = True
         
-        # Register server with ControlPlane
-        await self._register_server()
+        self.logger.info("Health and metrics service started. Initial registration will occur in the background.")
         
         # Start background tasks
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self._metrics_task = asyncio.create_task(self._metrics_collection_loop())
         
-        self.logger.info("Health and metrics service started")
+        self.logger.info("Health and metrics background tasks created")
 
     async def stop(self) -> None:
         """Stop health monitoring and metrics collection."""
@@ -153,8 +153,8 @@ class HealthMetricsService:
                 port=self.config.server_port,
                 capabilities={
                     "max_concurrent_sessions": 100,
-                    "supported_products": "speech_transcription",   # String as per ControlPlane interface
-                    "supported_languages": "en-US",                # String as per ControlPlane interface  
+                    "supported_products": "speech_transcription",
+                    "supported_languages": "en-US",
                 },
             )
             
@@ -162,8 +162,6 @@ class HealthMetricsService:
             
             self.logger.info(
                 "Attempting server registration",
-                server_id=self.config.server_id,
-                control_plane_url=self.config.control_plane_url,
                 correlation_id=correlation_id,
             )
             
@@ -172,62 +170,40 @@ class HealthMetricsService:
             )
             
             self._registered = True
-            self.logger.info(
-                "Server registered successfully",
-                server_id=self.config.server_id,
-                correlation_id=correlation_id,
-            )
+            await self._connection_state.mark_success()
+            self.logger.info("Server registered successfully", correlation_id=correlation_id)
             
         except Exception as e:
-            self.logger.error(
-                "Failed to register server",
-                error=str(e),
-                server_id=self.config.server_id,
-                control_plane_url=self.config.control_plane_url,
-            )
-            # Don't fail startup on registration failure, but ensure heartbeat doesn't start
+            self.logger.error("Failed to register server", error=str(e))
+            await self._connection_state.mark_failure()
             self._registered = False
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats to ControlPlane."""
         while self._running:
             try:
-                # If server is not registered, try to register first
-                if not self._registered:
+                if not await self._connection_state.should_attempt_request():
                     self.logger.info(
-                        "Server not registered, attempting registration",
-                        server_id=self.config.server_id,
+                        "Circuit breaker is open, attempting recovery",
+                        connection_info=await self._connection_state.get_connection_info(),
                     )
-                    await self._register_server()
-                    
-                    # If registration still failed, wait and try again later
-                    if not self._registered:
-                        self.logger.debug(
-                            "Registration failed, will retry on next heartbeat cycle",
-                            server_id=self.config.server_id,
-                        )
-                        await asyncio.sleep(self.config.heartbeat_interval)
-                        continue
-                
-                # Check if we should attempt the request based on circuit breaker
-                if not self._connection_state.should_attempt_request():
-                    self.logger.debug(
-                        "Skipping heartbeat due to circuit breaker",
-                        connection_info=self._connection_state.get_connection_info(),
-                    )
-                    # Wait for the appropriate backoff time
-                    backoff_delay = self._connection_state.get_backoff_delay()
-                    await asyncio.sleep(min(backoff_delay, self.config.heartbeat_interval))
+                    await self._attempt_connection_recovery()
+                    backoff_delay = await self._connection_state.get_backoff_delay()
+                    await asyncio.sleep(backoff_delay)
                     continue
                 
-                # Get current status
-                health_status = await self.get_health_status()
+                if not self._registered:
+                    await self._register_server()
+                    if not self._registered:
+                        backoff_delay = await self._connection_state.get_backoff_delay()
+                        await asyncio.sleep(backoff_delay)
+                        continue
                 
-                # Map health status to server status enum
+                health_status = await self.get_health_status()
                 status_mapping = {
                     "healthy": "online",
-                    "degraded": "degraded", 
-                    "unhealthy": "offline"
+                    "degraded": "degraded",
+                    "unhealthy": "offline",
                 }
                 server_status = status_mapping.get(health_status["status"], "offline")
                 
@@ -245,61 +221,54 @@ class HealthMetricsService:
                     self.config.server_id, heartbeat_data, correlation_id
                 )
                 
-                # Mark success in connection state
-                self._connection_state.mark_success()
-                
-                # Wait for next heartbeat
+                await self._connection_state.mark_success()
                 await asyncio.sleep(self.config.heartbeat_interval)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                # Mark failure in connection state
-                self._connection_state.mark_failure()
-                
-                self.logger.error(
-                    "Error in heartbeat loop",
-                    error=str(e),
-                    connection_info=self._connection_state.get_connection_info(),
-                )
-                
-                # Use progressive backoff instead of fixed delay
-                backoff_delay = self._connection_state.get_backoff_delay()
-                self.logger.info(
-                    "Applying backoff delay for heartbeat",
-                    delay_seconds=backoff_delay,
-                )
+                await self._connection_state.mark_failure()
+                self.logger.error("Error in heartbeat loop", error=str(e))
+                backoff_delay = await self._connection_state.get_backoff_delay()
                 await asyncio.sleep(backoff_delay)
+
+    async def _attempt_connection_recovery(self) -> None:
+        """Attempt to recover connection to ControlPlane."""
+        try:
+            self.logger.info("Attempting ControlPlane connection recovery")
+            health_result = await self.control_plane_client.health_check()
+            
+            if health_result.get("status") == "healthy":
+                self.logger.info("ControlPlane connection recovered")
+                await self._connection_state.mark_success()
+                if not self._registered:
+                    await self._register_server()
+            else:
+                await self._connection_state.mark_failure()
+                
+        except Exception as e:
+            self.logger.debug("Connection recovery attempt failed", error=str(e))
+            await self._connection_state.mark_failure()
 
     async def _metrics_collection_loop(self) -> None:
         """Collect and update Prometheus metrics."""
         while self._running:
             try:
                 await self._update_metrics()
-                await asyncio.sleep(30)  # Update metrics every 30 seconds
-                
+                await asyncio.sleep(30)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.error(
-                    "Error in metrics collection",
-                    error=str(e),
-                )
-                # Use progressive backoff for metrics collection errors too
-                backoff_delay = min(self._connection_state.get_backoff_delay(), 30)
+                self.logger.error("Error in metrics collection", error=str(e))
+                backoff_delay = min(await self._connection_state.get_backoff_delay(), 30)
                 await asyncio.sleep(backoff_delay)
 
     async def _update_metrics(self) -> None:
         """Update Prometheus metrics."""
         server_id = self.config.server_id
-        
-        # Update connection status metrics
         redis_connected = await self.redis_client.is_connected()
-        redis_connection_status.labels(server_id=server_id).set(
-            1 if redis_connected else 0
-        )
+        redis_connection_status.labels(server_id=server_id).set(1 if redis_connected else 0)
 
-        # Only check Control Plane health at reduced frequency to avoid excessive requests
         current_time = time.time()
         if (self.config.control_plane_health_check_enabled and 
             current_time - self._last_health_check_time >= self.config.control_plane_health_check_interval):
@@ -307,33 +276,23 @@ class HealthMetricsService:
             try:
                 control_plane_health = await self.control_plane_client.health_check()
                 cp_connected = control_plane_health.get("status") == "healthy"
-                control_plane_connection_status.labels(server_id=server_id).set(
-                    1 if cp_connected else 0
-                )
+                control_plane_connection_status.labels(server_id=server_id).set(1 if cp_connected else 0)
                 self._last_health_check_time = current_time
                 
-                # Update connection state based on health check
                 if cp_connected:
-                    self._connection_state.mark_success()
+                    await self._connection_state.mark_success()
                 else:
-                    self._connection_state.mark_failure()
+                    await self._connection_state.mark_failure()
                     
             except Exception as e:
-                self.logger.debug(
-                    "Control Plane health check failed in metrics",
-                    error=str(e),
-                )
-                self._connection_state.mark_failure()
+                self.logger.debug("Control Plane health check failed in metrics", error=str(e))
+                await self._connection_state.mark_failure()
                 control_plane_connection_status.labels(server_id=server_id).set(0)
         
-        # Update queue depth metrics
         if redis_connected:
             queue_lengths = await self.redis_client.get_all_queue_lengths()
             for queue_name, depth in queue_lengths.items():
-                redis_queue_depth.labels(
-                    server_id=server_id,
-                    queue_name=queue_name
-                ).set(depth)
+                redis_queue_depth.labels(server_id=server_id, queue_name=queue_name).set(depth)
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get comprehensive health status."""
