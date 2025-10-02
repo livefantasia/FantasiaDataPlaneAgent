@@ -25,6 +25,22 @@ class RedisClient:
         self._pool: Optional[redis.ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
         self._connected = False
+        self.loop = asyncio.get_running_loop()
+
+    def get_cache_sync(self, key: str) -> Optional[str]:
+        """Synchronous wrapper for get_cache."""
+        future = asyncio.run_coroutine_threadsafe(self.get_cache(key), self.loop)
+        return future.result(timeout=5) # 5 second timeout
+
+    def set_cache_sync(self, key: str, value: str, ttl: Optional[int] = None) -> None:
+        """Synchronous wrapper for set_cache."""
+        future = asyncio.run_coroutine_threadsafe(self.set_cache(key, value, ttl), self.loop)
+        future.result(timeout=5)
+
+    def is_connected_sync(self) -> bool:
+        """Synchronous wrapper for is_connected."""
+        future = asyncio.run_coroutine_threadsafe(self.is_connected(), self.loop)
+        return future.result(timeout=5)
 
     async def connect(self) -> None:
         """Establish Redis connection."""
