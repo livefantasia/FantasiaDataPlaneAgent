@@ -253,10 +253,16 @@ monitoring:
 - **Database**: Redis for queuing and persistence
 - **Monitoring**: Prometheus client, OpenTelemetry
 - **Configuration**: Pydantic for validation, PyYAML for parsing
-- **HTTP Client**: httpx with connection pooling
+- **HTTP Client**: requests for synchronous HTTP calls in background threads
 - **Process Management**: systemd integration, Docker support
 
 ### 4.2. MVP Service Architecture
+
+The DataPlaneAgent employs a hybrid concurrency model to ensure responsiveness and robustness:
+- **Async Core (FastAPI/Uvicorn)**: The main web server and the high-throughput Redis queue consumer (`RedisConsumerService`) run on the main `asyncio` event loop.
+- **Synchronous Worker Threads**: Long-running background tasks that perform blocking I/O, such as polling the ControlPlane for commands (`CommandProcessor`) and sending heartbeats (`HealthMetricsService`), are run in a dedicated `ThreadPoolExecutor`. This prevents them from blocking the main event loop.
+- **Async/Sync Communication**: A well-defined bridge allows `async` services to safely call and retrieve results from the synchronous workers and vice-versa, ensuring clean separation of concerns.
+
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │  AudioAPIServer │    │  DataPlaneAgent │    │   ControlPlane  │
@@ -275,16 +281,19 @@ monitoring:
 
 ### 4.3. MVP Data Flow
 1. **Usage Collection**: AudioAPIServer sends usage data to Redis queue
-2. **Data Processing**: DataPlaneAgent processes queue messages
-3. **Data Enrichment**: Add server metadata and validation
-4. **Transmission**: Forward to ControlPlane with retry logic
-5. **Key Management**: Fetch and cache JWT public keys
-6. **Health Reporting**: Basic health status and metrics
+2. **Data Processing**: DataPlaneAgent's `RedisConsumerService` (async) processes queue messages.
+3. **Data Enrichment**: Add server metadata and validation.
+4. **Transmission**: The `ControlPlaneClient` provides both `async` and `sync` methods. 
+   - `async` methods use `run_in_executor` to call a synchronous request function in a background thread.
+   - Synchronous methods are called directly by the worker threads.
+5. **Key Management**: Fetch and cache JWT public keys.
+6. **Health Reporting**: The `HealthMonitor` runs in a background thread, periodically sending heartbeats.
 
 ### 4.4. MVP Error Handling
-- **Redis Failures**: Auto-reconnect with exponential backoff
-- **ControlPlane Failures**: Retry with dead letter queue
-- **Network Issues**: Local queuing until connectivity restored
+- **Redis Failures**: Auto-reconnect with exponential backoff handled by the `redis-py` library.
+- **ControlPlane Failures**: Each synchronous worker implements its own self-contained retry logic with exponential backoff and circuit breaking behavior, logging failures and backoff intervals.
+- **Robust Connections**: All HTTP requests are made in a new session with the `Connection: close` header to prevent issues with stale connections.
+- **Async/Sync Bridge**: A `SyncRequestResult` object is used to safely pass success or failure information from the synchronous HTTP request thread back to the asynchronous context, where errors can be handled appropriately.
 - **Process Failures**: Systemd automatic restart
 
 **5. MVP Success Criteria & Technology Stack**

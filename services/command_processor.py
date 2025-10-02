@@ -11,9 +11,44 @@ from typing import Any, Dict, List, Optional
 
 from config import ApplicationConfig
 from models import CommandResult, CommandType, RemoteCommand
-from utils import create_contextual_logger
+from utils import create_contextual_logger, set_correlation_id
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
+
+class RetryHelper:
+    """Manages retry state and exponential backoff for a worker."""
+    def __init__(self, config: ApplicationConfig, logger):
+        self.config = config
+        self.logger = logger
+        self.consecutive_failures = 0
+        self.circuit_open = False
+
+    def mark_failure(self):
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.config.control_plane_retry_attempts:
+            if not self.circuit_open:
+                self.logger.warning("Circuit breaker OPENED due to repeated failures.")
+                self.circuit_open = True
+
+    def mark_success(self):
+        if self.circuit_open:
+            self.logger.info("Circuit breaker CLOSED after successful connection.")
+        self.consecutive_failures = 0
+        self.circuit_open = False
+
+    def get_backoff_delay(self) -> float:
+        if self.consecutive_failures == 0:
+            return 0.0
+        
+        delay = self.config.control_plane_initial_error_delay * (2 ** (self.consecutive_failures - 1))
+        capped_delay = min(delay, self.config.control_plane_max_backoff)
+        
+        self.logger.info(
+            f"Next retry in {capped_delay:.2f} seconds...",
+            consecutive_failures=self.consecutive_failures,
+            delay_seconds=capped_delay
+        )
+        return capped_delay
 
 
 class CommandProcessor:
@@ -32,6 +67,7 @@ class CommandProcessor:
         self.executor = executor
         self.logger = create_contextual_logger(__name__, service="command_processor")
         self._shutdown_event = threading.Event()
+        self._retry_helper = RetryHelper(config, self.logger)
 
     def start(self) -> None:
         """Start the command polling worker in the thread pool."""
@@ -48,23 +84,27 @@ class CommandProcessor:
         """Synchronous worker to poll for and process commands."""
         self.logger.info("Command polling worker started.")
         while not self._shutdown_event.is_set():
+            # Set a new correlation ID for each polling cycle
+            correlation_id = str(uuid.uuid4())
+            set_correlation_id(correlation_id)
+
             try:
                 correlation_id = str(uuid.uuid4())
                 commands = self.control_plane_client.poll_commands_sync(
                     self.config.server_id, correlation_id
                 )
+                self._retry_helper.mark_success()
+
                 for command in commands:
                     self._process_command_sync(command, correlation_id)
                 
-                # Use event.wait for an interruptible sleep
                 self._shutdown_event.wait(timeout=self.config.command_poll_interval)
 
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Error in command polling worker: {e}")
-                self._shutdown_event.wait(timeout=self.config.control_plane_initial_error_delay)
             except Exception as e:
-                self.logger.error(f"Unhandled error in command polling worker: {e}", exc_info=True)
-                self._shutdown_event.wait(timeout=self.config.control_plane_initial_error_delay)
+                self.logger.error(f"Error in command polling worker: {e}")
+                self._retry_helper.mark_failure()
+                delay = self._retry_helper.get_backoff_delay()
+                self._shutdown_event.wait(timeout=delay)
         self.logger.info("Command polling worker stopped.")
 
     def _process_command_sync(self, command: RemoteCommand, correlation_id: str) -> None:
