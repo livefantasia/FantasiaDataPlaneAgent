@@ -78,11 +78,13 @@ class HealthMetricsService:
                 
                 # The sleep interval depends on whether we are registered
                 interval = self.config.heartbeat_interval if self._registered else self.config.control_plane_initial_error_delay
-                time.sleep(interval)
+                # Use event.wait for an interruptible sleep
+                self._shutdown_event.wait(timeout=interval)
 
             except Exception as e:
                 self.logger.error(f"Unhandled error in heartbeat worker: {e}", exc_info=True)
-                time.sleep(self.config.control_plane_initial_error_delay) # Wait before restarting loop
+                # On error, wait for a bit before restarting the loop
+                self._shutdown_event.wait(timeout=self.config.control_plane_initial_error_delay)
         self.logger.info("Heartbeat worker stopped.")
 
     def _perform_registration(self) -> None:

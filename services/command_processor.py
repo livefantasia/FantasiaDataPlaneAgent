@@ -56,12 +56,15 @@ class CommandProcessor:
                 for command in commands:
                     self._process_command_sync(command, correlation_id)
                 
-                time.sleep(self.config.command_poll_interval)
+                # Use event.wait for an interruptible sleep
+                self._shutdown_event.wait(timeout=self.config.command_poll_interval)
 
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Error in command polling worker: {e}")
+                self._shutdown_event.wait(timeout=self.config.control_plane_initial_error_delay)
             except Exception as e:
-                self.logger.error(f"Error in command polling worker: {e}", exc_info=True)
-                # On failure, wait for a bit before retrying
-                time.sleep(self.config.control_plane_initial_error_delay)
+                self.logger.error(f"Unhandled error in command polling worker: {e}", exc_info=True)
+                self._shutdown_event.wait(timeout=self.config.control_plane_initial_error_delay)
         self.logger.info("Command polling worker stopped.")
 
     def _process_command_sync(self, command: RemoteCommand, correlation_id: str) -> None:
