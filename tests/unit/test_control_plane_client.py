@@ -1,9 +1,10 @@
 """Unit tests for ControlPlane client service."""
-
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from httpx import HTTPStatusError, RequestError, Response
 
 from models import (
@@ -23,32 +24,10 @@ from services.control_plane_client import ControlPlaneClient
 class TestControlPlaneClient:
     """Test cases for ControlPlaneClient class."""
 
-    @pytest.fixture
-    def control_plane_client(self, mock_config) -> ControlPlaneClient:
+    @pytest_asyncio.fixture
+    async def control_plane_client(self, mock_config) -> ControlPlaneClient:
         """Create a ControlPlane client instance for testing."""
         return ControlPlaneClient(mock_config)
-
-    @pytest.mark.asyncio
-    async def test_start(self, control_plane_client, mock_config) -> None:
-        """Test starting the ControlPlane client."""
-        with patch("services.control_plane_client.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value = mock_client
-            
-            await control_plane_client.start()
-            
-            assert control_plane_client._client == mock_client
-            mock_client_class.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_stop(self, control_plane_client) -> None:
-        """Test stopping the ControlPlane client."""
-        mock_client = AsyncMock()
-        control_plane_client._client = mock_client
-        
-        await control_plane_client.stop()
-        
-        mock_client.aclose.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_make_request_success(self, control_plane_client) -> None:

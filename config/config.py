@@ -58,12 +58,15 @@ class ServerConfig(BaseSettings):
     app_version: str = Field(alias="APP_VERSION")
     debug: bool = Field(alias="DEBUG")
 
-    # Server configuration
+    # Server configuration (Agent itself)
     server_id: str = Field(alias="SERVER_ID")
     server_region: str = Field(alias="SERVER_REGION")
     server_port: int = Field(alias="SERVER_PORT")
     server_host: str = Field(alias="SERVER_HOST")
-    server_ip: str = Field(alias="SERVER_IP")
+
+    # DataPlane Server configuration (The server this agent manages)
+    dataplane_host: str = Field(alias="DATAPLANE_HOST")
+    dataplane_port: int = Field(alias="DATAPLANE_PORT")
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -85,6 +88,14 @@ class ServerConfig(BaseSettings):
         """Ensure server_region is provided."""
         if not v or not v.strip():
             raise ValueError("server_region is required and cannot be empty")
+        return v.strip()
+
+    @field_validator("dataplane_host")
+    @classmethod
+    def validate_dataplane_host(cls, v: str) -> str:
+        """Ensure dataplane_host is provided."""
+        if not v or not v.strip():
+            raise ValueError("dataplane_host is required and cannot be empty")
         return v.strip()
 
 

@@ -133,8 +133,8 @@ class HealthMetricsService:
             server_id=self.config.server_id,
             region=self.config.server_region,
             version=self.config.app_version,
-            ip_address=self.config.server_ip,
-            port=self.config.server_port,
+            ip_address=self.config.dataplane_host,
+            port=self.config.dataplane_port,
             capabilities={ "max_concurrent_sessions": 100, "supported_products": "speech_transcription", "supported_languages": "en-US" },
         )
         self.control_plane_client.register_server_sync(registration_data)

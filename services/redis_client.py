@@ -178,7 +178,7 @@ class RedisClient:
         source_queue: str,
         processing_queue: str,
         timeout: int = 5
-    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+    ) -> Optional[Dict[str, Any]]:
         """Reliably pop message using BRPOPLPUSH pattern."""
         await self._ensure_connected()
         
@@ -191,13 +191,7 @@ class RedisClient:
                 ))
 
                 if result:
-                    message_id = await self._client.get(f"msg_id:{result}")
-                    if not message_id:
-                        # Generate message ID if not exists
-                        message_id = f"{source_queue}:{await self._client.incr('msg_counter')}"
-                        await self._client.set(f"msg_id:{result}", message_id)
-                    
-                    return str(message_id), json.loads(result)
+                    return json.loads(result)
             return None
         except Exception as e:
             self.logger.error(
@@ -353,6 +347,55 @@ class RedisClient:
             self.logger.error(
                 "Failed to delete cache value",
                 key=key,
+                error=str(e),
+            )
+            raise
+
+    async def recover_processing_queues(self, source_queues: List[str]) -> int:
+        """Recover messages from processing queues back to source queues on startup.
+        
+        This method should be called when the agent starts to recover any messages
+        that were left in processing queues due to unexpected shutdown.
+        
+        Args:
+            source_queues: List of source queue names to recover
+            
+        Returns:
+            Total number of messages recovered
+        """
+        await self._ensure_connected()
+        total_recovered = 0
+        
+        try:
+            if self._client:
+                for source_queue in source_queues:
+                    processing_queue = f"{source_queue}:processing"
+                    
+                    # Move all messages from processing queue back to source queue
+                    while True:
+                        message = await cast(Awaitable[str], self._client.rpoplpush(
+                            processing_queue, source_queue
+                        ))
+                        if not message:
+                            break
+                        total_recovered += 1
+                        
+                    self.logger.info(
+                        "Recovered processing queue",
+                        source_queue=source_queue,
+                        processing_queue=processing_queue,
+                        messages_recovered=total_recovered
+                    )
+                        
+            self.logger.info(
+                "Processing queue recovery completed",
+                total_messages_recovered=total_recovered
+            )
+            return total_recovered
+            
+        except Exception as e:
+            self.logger.error(
+                "Failed to recover processing queues",
                 error=str(e),
             )
             raise

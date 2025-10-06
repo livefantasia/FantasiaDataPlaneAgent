@@ -130,3 +130,36 @@ class ControlPlaneClient:
 
     async def request_quota_refresh(self, quota_request: QuotaRefreshRequest, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         return await self._make_async_request("POST", f"/api/v1/sessions/{quota_request.api_session_id}/refresh", data=quota_request.model_dump(mode='json'), correlation_id=correlation_id)
+
+    async def _make_request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Alias for _make_async_request for backward compatibility."""
+        return await self._make_async_request(method, endpoint, data, params, correlation_id)
+
+    async def register_server(self, registration_data: ServerRegistration, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Async version of register_server_sync."""
+        return await self._make_async_request("POST", "/api/v1/servers/register", data=registration_data.model_dump(), correlation_id=correlation_id)
+
+    async def send_heartbeat(self, server_id: str, heartbeat_data: HeartbeatData, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Async version of send_heartbeat_sync."""
+        return await self._make_async_request("PUT", f"/api/v1/servers/{server_id}/heartbeat", data=heartbeat_data.model_dump(mode='json'), correlation_id=correlation_id)
+
+    async def poll_commands(self, server_id: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Async version of poll_commands_sync."""
+        result = await self._make_async_request("GET", f"/api/v1/servers/{server_id}/commands", correlation_id=correlation_id)
+        return {"commands": [RemoteCommand(**cmd) for cmd in result.get("commands", [])]}
+
+    async def report_command_result(self, server_id: str, command_result: CommandResult, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Async version of report_command_result_sync."""
+        return await self._make_async_request("POST", f"/api/v1/servers/{server_id}/command-results", data=command_result.model_dump(mode='json'), correlation_id=correlation_id)
+
+    async def fetch_jwt_public_keys(self, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Fetch JWT public keys from the control plane."""
+        return await self._make_async_request("GET", "/api/v1/auth/public-keys", correlation_id=correlation_id)
+
+    async def health_check(self, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Perform health check against the control plane."""
+        return await self._make_async_request("GET", "/api/v1/health", correlation_id=correlation_id)
+
+    async def notify_server_shutdown(self, server_id: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Notify the control plane that the server is shutting down."""
+        return await self._make_async_request("POST", f"/api/v1/servers/{server_id}/shutdown", correlation_id=correlation_id)

@@ -75,6 +75,7 @@ def mock_control_plane_client() -> AsyncMock:
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create an event loop for async tests."""
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)  # Set as the current event loop
     yield loop
     loop.close()
 

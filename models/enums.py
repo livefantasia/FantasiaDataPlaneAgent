@@ -14,8 +14,8 @@ class ProductCode(str, Enum):
 class SessionEventType(str, Enum):
     """Types of session lifecycle events."""
 
-    SESSION_STARTED = "session_started"
-    SESSION_COMPLETED = "session_completed"
+    START = "session_started"
+    COMPLETE = "session_completed"
 
 
 class CommandType(str, Enum):

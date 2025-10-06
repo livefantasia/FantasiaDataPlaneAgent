@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 
 from models import RedisMessage
 from services.redis_client import RedisClient
@@ -12,8 +13,8 @@ from services.redis_client import RedisClient
 class TestRedisClient:
     """Test cases for RedisClient class."""
 
-    @pytest.fixture
-    def redis_client(self, mock_config) -> RedisClient:
+    @pytest_asyncio.fixture
+    async def redis_client(self, mock_config) -> RedisClient:
         """Create a Redis client instance for testing."""
         return RedisClient(mock_config)
 
@@ -195,9 +196,6 @@ class TestRedisClient:
         serialized_data = json.dumps(test_data)
         
         mock_client.brpoplpush = AsyncMock(return_value=serialized_data)
-        mock_client.get = AsyncMock(return_value=None)
-        mock_client.incr = AsyncMock(return_value=1)
-        mock_client.set = AsyncMock()
         
         with patch.object(redis_client, "_ensure_connected", new_callable=AsyncMock):
             result = await redis_client.reliable_pop_message(
@@ -205,9 +203,7 @@ class TestRedisClient:
             )
             
             assert result is not None
-            message_id, message_data = result
-            assert message_data == test_data
-            assert "source_queue:1" in message_id
+            assert result == test_data
 
     @pytest.mark.asyncio
     async def test_acknowledge_message(self, redis_client) -> None:

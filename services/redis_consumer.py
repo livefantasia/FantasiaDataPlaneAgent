@@ -48,6 +48,26 @@ class RedisConsumerService:
 
         self._running = True
         
+        # Recover any messages left in processing queues from previous shutdown
+        source_queues = [
+            self.config.usage_records_queue,
+            self.config.session_lifecycle_queue,
+            self.config.quota_refresh_queue,
+        ]
+        
+        try:
+            recovered_count = await self.redis_client.recover_processing_queues(source_queues)
+            if recovered_count > 0:
+                self.logger.info(
+                    "Recovered messages from processing queues on startup",
+                    recovered_messages=recovered_count
+                )
+        except Exception as e:
+            self.logger.error(
+                "Failed to recover processing queues on startup",
+                error=str(e)
+            )
+        
         # Start consumer tasks
         self._tasks = [
             asyncio.create_task(self._consume_usage_records()),
@@ -92,8 +112,9 @@ class RedisConsumerService:
                 )
                 
                 if result:
-                    message_id, message_data = result
+                    message_data = result
                     correlation_id = str(uuid.uuid4())
+                    message_id = message_data.get("message_id", "unknown")
                     
                     try:
                         await self._process_usage_record(
@@ -148,8 +169,9 @@ class RedisConsumerService:
                 )
                 
                 if result:
-                    message_id, message_data = result
+                    message_data = result
                     correlation_id = str(uuid.uuid4())
+                    message_id = message_data.get("message_id", "unknown")
                     
                     try:
                         await self._process_session_lifecycle_event(
@@ -204,8 +226,9 @@ class RedisConsumerService:
                 )
                 
                 if result:
-                    message_id, message_data = result
+                    message_data = result
                     correlation_id = str(uuid.uuid4())
+                    message_id = message_data.get("message_id", "unknown")
                     
                     try:
                         await self._process_quota_refresh_request(
