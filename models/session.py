@@ -1,6 +1,6 @@
 """Session management models for DataPlane Agent."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -26,7 +26,7 @@ class SessionLifecycleEvent(BaseModel):
     customer_id: str = Field(..., description="Customer identifier")
     event_type: SessionEventType = Field(..., description="Type of lifecycle event")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Event timestamp"
+        default_factory=lambda: datetime.now(timezone.utc), description="When DataPlaneAgent sends notification"
     )
     disconnect_reason: Optional[SessionCompletionReason] = Field(
         default=None, description="Reason for session completion"

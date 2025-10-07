@@ -5,7 +5,7 @@ This module handles all communication with the ControlPlane API.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from collections import namedtuple
 
@@ -143,15 +143,26 @@ class ControlPlaneClient:
                 self.logger.error(f"Failed to submit one usage record in batch: {e}", session_id=record.api_session_id)
         return {"submitted_count": len(results), "total_count": len(records)}
 
+    def _format_utc_timestamp(self, dt: datetime) -> str:
+        """Format datetime as proper UTC ISO string with Z suffix and microsecond precision."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        elif dt.tzinfo != timezone.utc:
+            dt = dt.astimezone(timezone.utc)
+        # Preserve microseconds for accurate timing
+        return dt.isoformat().replace('+00:00', 'Z')
+
     async def notify_session_start(self, session_event: SessionLifecycleEvent, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         # Create payload matching ControlPlane validation requirements
         # Note: api_session_id is in URL path, not request body
+        now_utc = self._format_utc_timestamp(datetime.now())
+        
         start_payload = {
             "transaction_id": session_event.transaction_id,
             "customer_id": session_event.customer_id,
             "event_type": session_event.event_type,
-            "started_at": session_event.timestamp.isoformat() if session_event.timestamp else None,
-            "timestamp": session_event.timestamp.isoformat() if session_event.timestamp else None,
+            "started_at": self._format_utc_timestamp(session_event.timestamp) if session_event.timestamp else now_utc,
+            "timestamp": now_utc,  # When DataPlaneAgent sends notification
         }
         
         # Include client_info if present in metadata
@@ -161,7 +172,27 @@ class ControlPlaneClient:
         return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/started", data=start_payload, correlation_id=correlation_id)
 
     async def notify_session_complete(self, session_event: SessionLifecycleEvent, correlation_id: Optional[str] = None) -> Dict[str, Any]:
-        return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/completed", data=session_event.model_dump(mode='json'), correlation_id=correlation_id)
+        # Create payload for session completion
+        now_utc = self._format_utc_timestamp(datetime.now())
+        
+        complete_payload = {
+            "transaction_id": session_event.transaction_id,
+            "customer_id": session_event.customer_id,
+            "event_type": session_event.event_type,
+            "completed_at": self._format_utc_timestamp(session_event.timestamp) if session_event.timestamp else now_utc,
+            "timestamp": now_utc,  # When DataPlaneAgent sends notification
+            "disconnect_reason": session_event.disconnect_reason,
+        }
+        
+        # Include final_usage_summary if present
+        if session_event.final_usage_summary:
+            complete_payload["final_usage_summary"] = session_event.final_usage_summary.model_dump(mode='json')
+            
+        # Include metadata if present
+        if session_event.metadata:
+            complete_payload["metadata"] = session_event.metadata
+            
+        return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/completed", data=complete_payload, correlation_id=correlation_id)
 
     async def request_quota_refresh(self, quota_request: QuotaRefreshRequest, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         return await self._make_async_request("POST", f"/api/v1/sessions/{quota_request.api_session_id}/refresh", data=quota_request.model_dump(mode='json'), correlation_id=correlation_id)
