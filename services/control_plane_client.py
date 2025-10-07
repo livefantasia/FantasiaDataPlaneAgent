@@ -54,6 +54,17 @@ class ControlPlaneClient:
             if correlation_id:
                 headers["X-Correlation-ID"] = correlation_id
 
+            # Extract transaction_id from data for logging
+            transaction_id = data.get('transaction_id') if data else None
+            
+            self.logger.debug(
+                "Sending HTTP request to ControlPlane",
+                method=method,
+                endpoint=endpoint,
+                transaction_id=transaction_id,
+                correlation_id=correlation_id
+            )
+
             with requests.Session() as session:
                 response = session.request(
                     method=method.upper(),
@@ -64,6 +75,16 @@ class ControlPlaneClient:
                     headers=headers,
                 )
                 response.raise_for_status()
+                
+                self.logger.debug(
+                    "Received HTTP response from ControlPlane",
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    transaction_id=transaction_id,
+                    correlation_id=correlation_id
+                )
+                
                 return SyncRequestResult(json_data=response.json(), error=None)
         except requests.exceptions.RequestException as e:
             self.logger.error(f"SYNC HTTP request failed: {e}")
@@ -123,7 +144,20 @@ class ControlPlaneClient:
         return {"submitted_count": len(results), "total_count": len(records)}
 
     async def notify_session_start(self, session_event: SessionLifecycleEvent, correlation_id: Optional[str] = None) -> Dict[str, Any]:
-        return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/started", data=session_event.model_dump(mode='json'), correlation_id=correlation_id)
+        # Create payload matching ControlPlane validation requirements
+        start_payload = {
+            "transaction_id": session_event.transaction_id,
+            "api_session_id": session_event.api_session_id,
+            "customer_id": session_event.customer_id,
+            "event_type": session_event.event_type,
+            "started_at": session_event.timestamp.isoformat() + "Z" if session_event.timestamp else None,
+        }
+        
+        # Include client_info if present in metadata
+        if session_event.metadata:
+            start_payload["client_info"] = session_event.metadata.get("client_info", {})
+            
+        return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/started", data=start_payload, correlation_id=correlation_id)
 
     async def notify_session_complete(self, session_event: SessionLifecycleEvent, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         return await self._make_async_request("POST", f"/api/v1/sessions/{session_event.api_session_id}/completed", data=session_event.model_dump(mode='json'), correlation_id=correlation_id)

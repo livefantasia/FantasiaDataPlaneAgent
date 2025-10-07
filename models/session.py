@@ -9,11 +9,11 @@ from .enums import SessionEventType, SessionCompletionReason
 
 
 class FinalUsageSummary(BaseModel):
-    """Final usage summary matching ControlPlane expectations."""
+    """Final usage summary matching AudioAPIServer specification."""
     
-    total_duration_seconds: float = Field(..., ge=0, description="Total connection duration")
-    total_bytes_processed: int = Field(..., ge=0, description="Total bytes processed")
-    total_audio_seconds: float = Field(..., ge=0, description="Total audio duration")
+    total_connection_duration_seconds: float = Field(..., ge=0, description="Total connection duration")
+    total_data_bytes_processed: int = Field(..., ge=0, description="Total bytes processed")
+    total_audio_duration_seconds: float = Field(..., ge=0, description="Total audio duration")
     total_request_count: int = Field(..., ge=0, description="Total number of requests")
     last_request_timestamp: datetime = Field(..., description="Timestamp of last request")
 
@@ -21,6 +21,7 @@ class FinalUsageSummary(BaseModel):
 class SessionLifecycleEvent(BaseModel):
     """Session lifecycle event."""
 
+    transaction_id: str = Field(..., description="Unique transaction identifier for idempotency")
     api_session_id: str = Field(..., description="Session identifier")
     customer_id: str = Field(..., description="Customer identifier")
     event_type: SessionEventType = Field(..., description="Type of lifecycle event")

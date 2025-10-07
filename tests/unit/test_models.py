@@ -28,7 +28,7 @@ class TestUsageRecord:
             connection_duration_seconds=120.5,
             data_bytes_processed=1024000,
             audio_duration_seconds=110.0,
-            request_count=0,
+            # request_count defaults to 1 now
             request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
             response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
         )
@@ -98,7 +98,7 @@ class TestEnrichedUsageRecord:
             connection_duration_seconds=120.5,
             data_bytes_processed=1024000,
             audio_duration_seconds=110.0,
-            request_count=0,
+            # request_count defaults to 1 now, with minimum value of 1
             request_timestamp=datetime.fromisoformat("2024-01-15T10:00:00+00:00"),
             response_timestamp=datetime.fromisoformat("2024-01-15T10:02:00+00:00"),
             server_instance_id="server-001",
@@ -118,6 +118,7 @@ class TestSessionLifecycleEvent:
     def test_session_start_event(self) -> None:
         """Test creating a session start event."""
         event = SessionLifecycleEvent(
+            transaction_id="test-transaction-001",
             api_session_id="test-session-001",
             customer_id="test-customer-001",
             event_type=SessionEventType.START,
@@ -131,6 +132,7 @@ class TestSessionLifecycleEvent:
     def test_session_complete_event(self) -> None:
         """Test creating a session complete event."""
         event = SessionLifecycleEvent(
+            transaction_id="test-transaction-002",
             api_session_id="test-session-001",
             customer_id="test-customer-001",
             event_type=SessionEventType.COMPLETE,

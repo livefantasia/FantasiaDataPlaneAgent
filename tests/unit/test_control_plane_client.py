@@ -106,7 +106,7 @@ class TestControlPlaneClient:
             connection_duration_seconds=120.0,
             data_bytes_processed=1024,
             audio_duration_seconds=110.0,
-            request_count=0,
+            # request_count now defaults to 1, so we don't need to specify it
             request_timestamp=datetime.utcnow(),
             response_timestamp=datetime.utcnow(),
             server_instance_id="test-server",
@@ -127,6 +127,7 @@ class TestControlPlaneClient:
     async def test_notify_session_start(self, control_plane_client) -> None:
         """Test notifying session start."""
         session_event = SessionLifecycleEvent(
+            transaction_id="test-transaction-001",
             api_session_id="test-session",
             customer_id="test-customer",
             event_type=SessionEventType.START
@@ -180,6 +181,7 @@ class TestControlPlaneClient:
     async def test_notify_session_complete(self, control_plane_client) -> None:
         """Test notifying session completion."""
         session_event = SessionLifecycleEvent(
+            transaction_id="test-transaction-002",
             api_session_id="test-session",
             customer_id="test-customer",
             event_type=SessionEventType.COMPLETE

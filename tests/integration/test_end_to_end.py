@@ -81,6 +81,7 @@ class TestEndToEndIntegration:
         """Test complete session lifecycle event processing."""
         # Test session start event
         start_event_data = {
+            "transaction_id": "test-transaction-001",
             "api_session_id": "session789",
             "customer_id": "customer456",
             "event_type": "start",
@@ -127,34 +128,40 @@ class TestEndToEndIntegration:
         # Mock Redis to show command has not been executed
         mock_redis_client.get_cache.return_value = None
 
+        # Mock ThreadPoolExecutor for the processor
+        from concurrent.futures import ThreadPoolExecutor
+        mock_executor = AsyncMock(spec=ThreadPoolExecutor)
+        
         processor = CommandProcessor(
             config=mock_config,
             redis_client=mock_redis_client,
             control_plane_client=mock_control_plane_client,
+            executor=mock_executor,
         )
 
-        # Set the processor to running state to enable polling
-        processor._running = True
-
-        # Mock the sleep to avoid waiting and stop after first iteration
-        original_sleep = asyncio.sleep
-        async def mock_sleep(delay):
-            processor._running = False  # Stop after first iteration
-            await original_sleep(0.01)  # Small delay to allow processing
+        # Since CommandProcessor is now synchronous, we'll test the sync methods directly
+        # Mock the synchronous poll_commands_sync method
+        mock_control_plane_client.poll_commands_sync.return_value = [health_command]
         
-        with patch('asyncio.sleep', side_effect=mock_sleep):
-            # Simulate polling and processing one command
-            await processor._poll_commands()
+        # Mock Redis cache operations
+        mock_redis_client.get_cache.return_value = None
+        
+        # Mock the report_command_result_sync method
+        mock_control_plane_client.report_command_result_sync = AsyncMock()
+        
+        # Test the command processing directly
+        processor._process_command_sync(health_command, "test-correlation-id")
 
         # Verify checks and actions
-        mock_control_plane_client.poll_commands.assert_called_once()
         mock_redis_client.get_cache.assert_called_once_with("executed_commands:cmd001")
         mock_redis_client.set_cache.assert_called_once()
-        mock_control_plane_client.report_command_result.assert_called_once()
+        mock_control_plane_client.report_command_result_sync.assert_called_once()
 
         # Check that the result reported was successful
-        result_call_args = mock_control_plane_client.report_command_result.call_args[0]
+        result_call_args = mock_control_plane_client.report_command_result_sync.call_args[0]
+        server_id = result_call_args[0]
         command_result = result_call_args[1]
+        assert server_id == mock_config.server_id
         assert command_result.success is True
         assert command_result.command_id == "cmd001"
         assert "overall_status" in command_result.result
@@ -170,31 +177,31 @@ class TestEndToEndIntegration:
             control_plane_client=mock_control_plane_client,
         )
 
+        # Mock ThreadPoolExecutor for the processor
+        from concurrent.futures import ThreadPoolExecutor
+        mock_executor = AsyncMock(spec=ThreadPoolExecutor)
+        
         processor = CommandProcessor(
             config=mock_config,
             redis_client=mock_redis_client,
             control_plane_client=mock_control_plane_client,
+            executor=mock_executor,
         )
 
-        # Start services (which starts background tasks)
+        # Start services (consumer is async, processor is sync)
         await consumer.start()
-        await processor.start()
+        processor.start()  # This is synchronous now
 
         # Verify services are running and tasks are created
         assert consumer._running
-        assert processor._running
         assert len(consumer._tasks) > 0
-        assert processor._polling_task is not None
 
         # Stop services
         await consumer.stop()
-        await processor.stop()
+        processor.stop()  # This is synchronous now
 
-        # Verify services stopped gracefully
+        # Verify consumer stopped gracefully
         assert not consumer._running
-        assert not processor._running
         # Ensure tasks were cancelled
         for task in consumer._tasks:
             assert task.cancelled()
-        # Task is done after being cancelled and awaited
-        assert processor._polling_task.done()

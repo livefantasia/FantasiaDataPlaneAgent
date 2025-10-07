@@ -27,7 +27,7 @@ class UsageRecord(BaseModel):
     audio_duration_seconds: float = Field(
         ..., ge=0, description="Total audio duration processed in seconds"
     )
-    request_count: int = Field(..., ge=0, description="Number of API requests")
+    request_count: int = Field(default=1, ge=1, description="Number of API requests (default: 1)")
     request_timestamp: datetime = Field(..., description="When request was initiated")
     response_timestamp: datetime = Field(..., description="When response was sent")
 

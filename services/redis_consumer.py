@@ -17,7 +17,7 @@ from models import (
     SessionLifecycleEvent,
     UsageRecord,
 )
-from models.enums import ProductCode
+from models.enums import ProductCode, SessionEventType
 from utils import create_contextual_logger
 from .control_plane_client import ControlPlaneClient
 from .redis_client import RedisClient
@@ -315,21 +315,34 @@ class RedisConsumerService:
     ) -> None:
         """Process a session lifecycle event."""
         event = SessionLifecycleEvent(**message_data)
+        result = None
         
         try:
-            if event.event_type == "start":
-                await self.control_plane_client.notify_session_start(
-                    event, correlation_id
-                )
-            elif event.event_type == "complete":
-                await self.control_plane_client.notify_session_complete(
-                    event, correlation_id
-                )
-            
             self.logger.info(
-                "Session lifecycle event processed successfully",
+                "Sending session lifecycle event to ControlPlane",
                 session_id=event.api_session_id,
                 event_type=event.event_type,
+                transaction_id=event.transaction_id,
+                correlation_id=correlation_id,
+            )
+            
+            if event.event_type == SessionEventType.START.value:
+                result = await self.control_plane_client.notify_session_start(
+                    event, correlation_id
+                )
+            elif event.event_type == SessionEventType.COMPLETE.value:
+                result = await self.control_plane_client.notify_session_complete(
+                    event, correlation_id
+                )
+            else:
+                raise ValueError(f"Unknown event type: {event.event_type}")
+            
+            self.logger.info(
+                "ControlPlane responded to session lifecycle event",
+                session_id=event.api_session_id,
+                event_type=event.event_type,
+                transaction_id=event.transaction_id,
+                response_summary=str(result)[:200] if result else "empty",
                 correlation_id=correlation_id,
             )
         except Exception as e:
