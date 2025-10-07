@@ -145,12 +145,13 @@ class ControlPlaneClient:
 
     async def notify_session_start(self, session_event: SessionLifecycleEvent, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         # Create payload matching ControlPlane validation requirements
+        # Note: api_session_id is in URL path, not request body
         start_payload = {
             "transaction_id": session_event.transaction_id,
-            "api_session_id": session_event.api_session_id,
             "customer_id": session_event.customer_id,
             "event_type": session_event.event_type,
-            "started_at": session_event.timestamp.isoformat() + "Z" if session_event.timestamp else None,
+            "started_at": session_event.timestamp.isoformat() if session_event.timestamp else None,
+            "timestamp": session_event.timestamp.isoformat() if session_event.timestamp else None,
         }
         
         # Include client_info if present in metadata

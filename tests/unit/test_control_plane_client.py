@@ -135,17 +135,19 @@ class TestControlPlaneClient:
         
         expected_response = {"status": "success"}
         
-        with patch.object(control_plane_client, "_make_request", return_value=expected_response) as mock_request:
+        with patch.object(control_plane_client, "_make_async_request", return_value=expected_response) as mock_request:
             result = await control_plane_client.notify_session_start(session_event)
             
             assert result == expected_response
             mock_request.assert_called_once_with(
-                method="POST",
-                endpoint="/api/v1/sessions/test-session/started",
+                "POST",
+                "/api/v1/sessions/test-session/started",
                 data={
-                    "started_at": session_event.timestamp.isoformat(),
-                    "client_info": session_event.metadata or {},
-                    "timestamp": session_event.timestamp.isoformat(),
+                    "transaction_id": "test-transaction-001",
+                    "customer_id": "test-customer",
+                    "event_type": "session_started",
+                    "started_at": session_event.timestamp.isoformat() + "Z",
+                    "timestamp": session_event.timestamp.isoformat() + "Z",
                 },
                 correlation_id=None
             )
