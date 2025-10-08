@@ -384,7 +384,13 @@ class RedisConsumerService:
             # If we received a response, forward it back to the AudioAPIServer
             if response_data:
                 try:
-                    quota_response = QuotaRefreshResponse(**response_data)
+                    # Extract the actual data from ControlPlane's wrapped response format
+                    # ControlPlane returns: {success: true, data: {...}, timestamp: "..."}
+                    # We expect ControlPlane to return the correct field names in data
+                    control_plane_data = response_data.get('data', {})
+                    
+                    # ControlPlane should return these exact field names to match our model
+                    quota_response = QuotaRefreshResponse(**control_plane_data)
                     
                     # Send response back to AudioAPIServer via quota_response_queue
                     await self.redis_client.push_message(
