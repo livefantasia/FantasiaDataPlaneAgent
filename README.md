@@ -392,3 +392,76 @@ For support and questions:
 ---
 
 **Built with ❤️ for high-performance data processing**
+
+## CI/CD with GitHub Actions
+
+- Repository: <mcurl name="FantasiaDataPlaneAgent (GitHub)" url="https://github.com/livefantasia/FantasiaDataPlaneAgent.git"></mcurl>
+- Goal: Lint, type-check, and run tests on push/PR; optionally publish wheels to private PyPI on tagged releases
+
+Basic workflow (tests on push and PR):
+
+```yaml
+name: CI (Tests)
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt || true
+          pip install mypy ruff pytest || true
+      - name: Type check
+        run: |
+          mypy . || true
+      - name: Lint (ruff)
+        run: |
+          ruff check . || true
+      - name: Run tests
+        run: |
+          pytest -v
+```
+
+Optional publish to private PyPI on tag:
+
+```yaml
+name: Publish (Private PyPI)
+on:
+  push:
+    tags: [ 'v*' ]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Prepare build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      - name: Build wheel/sdist
+        run: |
+          python -m build
+      - name: Upload to private PyPI
+        env:
+          TWINE_REPOSITORY_URL: ${{ secrets.PYPI_REPOSITORY_URL }}
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: |
+          twine upload dist/*
+```
+
+Notes:
+- Use a self-hosted runner for integration tests that require Redis or ControlPlane connectivity, or mock those dependencies in CI.
